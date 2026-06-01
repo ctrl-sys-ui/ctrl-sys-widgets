@@ -81,6 +81,20 @@ pub async fn stop_epics_server(state: &AppState) -> Result<(), ProtocolControlEr
     }
 }
 
+#[cfg(not(feature = "epics"))]
+pub async fn start_epics_runtime(_state: &AppState) -> Result<(), ProtocolControlError> {
+    Err(ProtocolControlError::Operation(
+        "EPICS feature is not enabled".to_string(),
+    ))
+}
+
+#[cfg(not(feature = "epics"))]
+pub async fn stop_epics_server(_state: &AppState) -> Result<(), ProtocolControlError> {
+    Err(ProtocolControlError::Operation(
+        "EPICS feature is not enabled".to_string(),
+    ))
+}
+
 #[cfg(feature = "modbus")]
 pub fn start_modbus_tasks(
     state: &AppState,

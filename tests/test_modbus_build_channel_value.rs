@@ -31,6 +31,7 @@ mod test_modbus_build_channel_value {
             scale,
             offset,
             word_count: 1,
+            bit_index: None,
         }
     }
 

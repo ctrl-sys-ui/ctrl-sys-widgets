@@ -112,6 +112,7 @@ mod test_modbus_connection_events {
                 scale: 1.0,
                 offset: 0.0,
                 word_count: 1,
+                bit_index: None,
             })),
             ..Default::default()
         })

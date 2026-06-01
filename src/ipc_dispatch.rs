@@ -40,8 +40,14 @@ fn find_widget_by_id(state: &AppState, widget_id: &str) -> Option<WidgetConfig> 
         .find(|widget| widget.id == widget_id)
 }
 
+#[cfg(feature = "epics")]
 fn widget_is_epics(widget: &WidgetConfig) -> bool {
     matches!(widget.protocol.as_ref(), Some(ProtocolConfig::EpicsPva(_)))
+}
+
+#[cfg(not(feature = "epics"))]
+fn widget_is_epics(_widget: &WidgetConfig) -> bool {
+    false
 }
 
 fn widget_is_modbus(widget: &WidgetConfig) -> bool {
@@ -160,18 +166,53 @@ pub async fn dispatch_request(
                 }
             }
         }
-        IpcCommand::EpicsServerStart => match protocol_control::start_epics_runtime(state).await {
-            Ok(()) => ok_response(&request.id, json!({ "running": true })),
-            Err(error) => protocol_error_response(&request.id, error),
-        },
-        IpcCommand::EpicsServerStop => match protocol_control::stop_epics_server(state).await {
-            Ok(()) => ok_response(&request.id, json!({ "running": false })),
-            Err(error) => protocol_error_response(&request.id, error),
-        },
-        IpcCommand::EpicsServerStatusGet => ok_response(
-            &request.id,
-            json!({ "running": state.is_server_running() }),
-        ),
+        IpcCommand::EpicsServerStart => {
+            #[cfg(feature = "epics")]
+            {
+                match protocol_control::start_epics_runtime(state).await {
+                    Ok(()) => ok_response(&request.id, json!({ "running": true })),
+                    Err(error) => protocol_error_response(&request.id, error),
+                }
+            }
+            #[cfg(not(feature = "epics"))]
+            {
+                error_response(
+                    &request.id,
+                    IpcErrorCode::CmdUnknown,
+                    "EPICS feature is not enabled",
+                )
+            }
+        }
+        IpcCommand::EpicsServerStop => {
+            #[cfg(feature = "epics")]
+            {
+                match protocol_control::stop_epics_server(state).await {
+                    Ok(()) => ok_response(&request.id, json!({ "running": false })),
+                    Err(error) => protocol_error_response(&request.id, error),
+                }
+            }
+            #[cfg(not(feature = "epics"))]
+            {
+                error_response(
+                    &request.id,
+                    IpcErrorCode::CmdUnknown,
+                    "EPICS feature is not enabled",
+                )
+            }
+        }
+        IpcCommand::EpicsServerStatusGet => {
+            #[cfg(feature = "epics")]
+            {
+                ok_response(
+                    &request.id,
+                    json!({ "running": state.is_server_running() }),
+                )
+            }
+            #[cfg(not(feature = "epics"))]
+            {
+                ok_response(&request.id, json!({ "running": false }))
+            }
+        }
         IpcCommand::EpicsPvRead => {
             let payload = match serde_json::from_value::<ChannelReadPayload>(request.payload) {
                 Ok(payload) => payload,

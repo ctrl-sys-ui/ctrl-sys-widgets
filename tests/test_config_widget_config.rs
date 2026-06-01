@@ -61,6 +61,7 @@ mod test_config_widget_config {
             scale: 1.0,
             offset: 0.0,
             word_count: 1,
+            bit_index: None,
         }));
         assert_eq!(w.channel_address(), "modbus-tcp://127.0.0.1:502/reg1000");
     }
@@ -95,6 +96,7 @@ mod test_config_widget_config {
             scale: 1.0,
             offset: 0.0,
             word_count: 1,
+            bit_index: None,
         }));
         assert!(w.modbus_tcp().is_some());
         assert!(w.epics_pva().is_none());
