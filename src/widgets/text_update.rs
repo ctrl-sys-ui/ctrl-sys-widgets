@@ -66,7 +66,8 @@ pub fn render_inner_connected(config: &WidgetConfig, cv: &ChannelValue) -> Marku
 }
 
 pub fn render_inner_disconnected(config: &WidgetConfig, _reason: &str) -> Markup {
-    render_display_html(config, "--", "", "text-update alarm-disconnected", Some(super::OFFLINE_SVG), "")
+    let tooltip = super::build_disconnected_tooltip(config);
+    render_display_html(config, "--", "", "text-update alarm-disconnected", Some(super::OFFLINE_SVG), &tooltip)
 }
 
 fn render_display_html(

@@ -58,7 +58,8 @@ pub fn render_inner_connected(config: &WidgetConfig, cv: &ChannelValue) -> Marku
 }
 
 pub fn render_inner_disconnected(config: &WidgetConfig) -> Markup {
-    render_button_html(config, true, "")
+    let tooltip = super::build_disconnected_tooltip(config);
+    render_button_html(config, true, &tooltip)
 }
 
 fn render_button_html(

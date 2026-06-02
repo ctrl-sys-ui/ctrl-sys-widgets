@@ -65,7 +65,8 @@ pub fn render_inner_connected(config: &WidgetConfig, cv: &ChannelValue) -> Marku
 }
 
 pub fn render_inner_disconnected(config: &WidgetConfig) -> Markup {
-    render_led_html(config, false, Some(super::OFFLINE_SVG), true, "")
+    let tooltip = super::build_disconnected_tooltip(config);
+    render_led_html(config, false, Some(super::OFFLINE_SVG), true, &tooltip)
 }
 
 fn render_led_html(

@@ -512,6 +512,17 @@ pub(super) fn build_led_tooltip(config: &crate::config::WidgetConfig, cv: &Chann
     )
 }
 
+/// Build a minimal tooltip for a disconnected widget — shows ID and channel address
+/// so the info button appears and is useful even before a connection is established.
+pub(super) fn build_disconnected_tooltip(config: &crate::config::WidgetConfig) -> String {
+    let ch = config.channel_address();
+    if ch.is_empty() {
+        format!("ID: {}\nStatus: Disconnected", config.id)
+    } else {
+        format!("ID: {}\nChannel: {}\nStatus: Disconnected", config.id, ch)
+    }
+}
+
 /// Build an inline style string from the widget's optional style config (width/height).
 /// Always includes `position:relative` so the absolutely-positioned info button
 /// anchors to the widget container edge rather than a distant ancestor.

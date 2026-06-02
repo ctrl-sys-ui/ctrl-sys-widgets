@@ -119,7 +119,8 @@ pub fn render_inner_connected(config: &WidgetConfig, cv: &ChannelValue) -> Marku
 }
 
 pub fn render_inner_pending(config: &WidgetConfig) -> Markup {
-    render_polygon_html(config, "vs-pending", Some(super::OFFLINE_SVG), "")
+    let tooltip = super::build_disconnected_tooltip(config);
+    render_polygon_html(config, "vs-pending", Some(super::OFFLINE_SVG), &tooltip)
 }
 
 fn render_polygon_html(config: &WidgetConfig, state_cls: &str, icon: Option<&str>, tooltip: &str) -> Markup {
