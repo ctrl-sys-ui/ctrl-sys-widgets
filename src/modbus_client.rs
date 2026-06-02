@@ -368,6 +368,19 @@ async fn run_modbus_poll(
     pool: Arc<ModbusPool>,
     tx: tokio::sync::mpsc::UnboundedSender<ChannelEvent>,
 ) {
+    tracing::info!(
+        "Modbus monitor starting: widget_id='{}' label='{}' host='{}' port={} unit_id={} register={} register_type='{:?}' word_count={} poll_ms={}",
+        config.id,
+        config.label,
+        m.host,
+        m.port,
+        m.unit_id,
+        m.register,
+        m.register_type,
+        m.word_count,
+        m.min_poll_interval_ms.max(50)
+    );
+
     let mut handle = pool.get_or_create(&m.host, m.port, m.unit_id);
     let mut interval =
         tokio::time::interval(Duration::from_millis(m.min_poll_interval_ms.max(50)));
@@ -400,7 +413,13 @@ async fn run_modbus_poll(
                     was_connected = true;
                     let _ = tx.send(ChannelEvent::Connected);
                 }
-                let raw = decode_words(&words, m.word_count);
+                let raw = if let Some(bit) = m.bit_index {
+                    let bit = bit.min(15);
+                    let word0 = words.first().copied().unwrap_or(0);
+                    ((word0 >> bit) & 1) as f64
+                } else {
+                    decode_words(&words, m.word_count)
+                };
                 let physical = raw * m.scale + m.offset;
                 let cv = build_channel_value(physical, &m, &config);
 
@@ -408,6 +427,22 @@ async fn run_modbus_poll(
                 // matches EPICS monitor semantics and prevents the SSE stream
                 // from overwriting an in-progress text-entry on every tick.
                 if last_value_str.as_deref() != Some(&cv.value_str) {
+                    let bit_info = m
+                        .bit_index
+                        .map(|b| format!(", bit_index={}", b))
+                        .unwrap_or_default();
+                    tracing::info!(
+                        "[{}] read_channel: ch=modbus-tcp://{}:{}/reg{}, register_type={:?}, word_count={}{} words={:?}, value='{}'",
+                        config.id,
+                        m.host,
+                        m.port,
+                        m.register,
+                        m.register_type,
+                        m.word_count,
+                        bit_info,
+                        words,
+                        cv.value_str
+                    );
                     last_value_str = Some(cv.value_str.clone());
                     if tx.send(ChannelEvent::Value(cv)).is_err() {
                         break;

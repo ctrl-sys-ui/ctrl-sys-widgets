@@ -14,6 +14,10 @@ pub fn get_asset(path: &str) -> Option<(&'static [u8], &'static str)> {
             include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"), "/static/tooltip.js")),
             "application/javascript",
         )),
+        "desktop_transport.js" => Some((
+            include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"), "/static/desktop_transport.js")),
+            "application/javascript",
+        )),
         "fonts/ibm-plex-mono/IBMPlexMono-Bold.woff2" => Some((
             include_bytes!(concat!(
                 env!("CARGO_MANIFEST_DIR"),

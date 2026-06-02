@@ -1,7 +1,7 @@
-// Quick test to verify config loading with improved error messages
-// Run with: cargo run --bin test-config-load examples/test_missing_label.json
+// Quick test to verify app config loading with improved error messages
+// Run with: cargo run --bin test-config-load examples/demo_app.json
 
-use mycela::config::ScreenConfig;
+use mycela::config::AppConfig;
 use std::env;
 
 fn main() {
@@ -10,19 +10,24 @@ fn main() {
     let config_path = if args.len() > 1 {
         &args[1]
     } else {
-        "examples/demo_config.json"
+        "examples/demo_app.json"
     };
     
     println!("Attempting to load config from: {}\n", config_path);
     
-    match ScreenConfig::load(config_path) {
+    match AppConfig::load(config_path) {
         Ok(config) => {
             println!(" SUCCESS! Loaded configuration:");
             println!("   Title: {}", config.title);
-            println!("   Description: {}", config.description);
-            println!("   Widgets: {}", config.widgets.len());
-            for widget in &config.widgets {
-                println!("      - {} ({:?}): {}", widget.id, widget.widget_type, widget.label);
+            println!("   Home screen: {}", config.home_screen.as_deref().unwrap_or("(none)"));
+            println!("   Screens: {}", config.screens.len());
+            for screen in &config.screens {
+                println!(
+                    "      - {}: {} ({} widgets)",
+                    screen.id,
+                    screen.title,
+                    screen.widgets.len()
+                );
             }
         }
         Err(e) => {

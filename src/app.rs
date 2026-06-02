@@ -15,11 +15,22 @@ use axum::{
 use crate::{
     channel::ChannelContext,
     config::{AppConfig, WidgetType},
+    protocol_control::{self, ProtocolControlError},
     widgets,
 };
 
 #[cfg(feature = "epics")]
 use crate::server_setup::setup_server_pvs;
+
+#[cfg(feature = "epics")]
+pub type EpicsStartHook = Arc<
+    dyn Fn(&AppState, &pvxs_sys::Server) -> Result<(), ProtocolControlError> + Send + Sync,
+>;
+
+#[cfg(feature = "modbus")]
+pub type ModbusStartHook = Arc<
+    dyn Fn(&AppState) -> Result<Vec<tokio::task::JoinHandle<()>>, ProtocolControlError> + Send + Sync,
+>;
 
 // --- Application state -------------------------------------------------------
 
@@ -38,6 +49,15 @@ pub struct AppState {
     pub channel_ctx: Arc<ChannelContext>,
     /// Handles for any background Modbus simulator/connection tasks.
     pub modbus_task: Arc<Mutex<Option<Vec<tokio::task::JoinHandle<()>>>>>,
+    /// Optional callback to attach app-specific EPICS simulator behavior after server start.
+    #[cfg(feature = "epics")]
+    pub epics_start_hook: Option<EpicsStartHook>,
+    /// Optional callback to construct app-specific Modbus tasks when starting Modbus runtime.
+    #[cfg(feature = "modbus")]
+    pub modbus_start_hook: Option<ModbusStartHook>,
+        /// Optional loopback session token for rendering.
+        pub loopback_token: Option<String>,
+    
 }
 
 impl AppState {
@@ -94,18 +114,30 @@ pub async fn write_widget(
     State(state): State<AppState>,
     Form(form): Form<widgets::WriteForm>,
 ) -> Response {
+    let (status, markup) = write_widget_markup(&state, &widget_id, form.value).await;
+    (status, Html(markup.into_string())).into_response()
+}
+
+pub async fn write_widget_markup(
+    state: &AppState,
+    widget_id: &str,
+    value: String,
+) -> (StatusCode, maud::Markup) {
     let widget = state.config.screens.iter()
         .flat_map(|s| widgets::collect_data_widgets(&s.widgets))
         .find(|w| w.id == widget_id);
+
     match widget {
-        None => (StatusCode::NOT_FOUND, Html(format!(
-            "<span class=\"write-err\">Widget '{}' not found</span>", widget_id
-        ))).into_response(),
-        Some(w) => Html(
-            widgets::write_channel(w, form.value, state.channel_ctx.clone())
-                .await
-                .into_string(),
-        ).into_response(),
+        None => (
+            StatusCode::NOT_FOUND,
+            maud::html! {
+                span class="write-err" { "Widget '" (widget_id) "' not found" }
+            },
+        ),
+        Some(w) => (
+            StatusCode::OK,
+            widgets::write_channel(w, value, state.channel_ctx.clone()).await,
+        ),
     }
 }
 
@@ -116,7 +148,15 @@ async fn render_home(State(state): State<AppState>) -> Result<Html<String>, Stat
         Some(id) => state.config.screens.iter().find(|s| &s.id == id),
         None     => state.config.screens.first(),
     }.ok_or(StatusCode::NOT_FOUND)?;
-    Ok(Html(widgets::render_screen(screen).into_string()))
+    Ok(Html(
+        widgets::render_screen_with_options(
+            screen,
+            true,
+            None,
+            state.loopback_token.as_deref(),
+        )
+        .into_string(),
+    ))
 }
 
 pub async fn render_screen(
@@ -130,7 +170,15 @@ pub async fn render_screen(
             tracing::error!("Screen '{}' not found in AppConfig", screen_id);
             StatusCode::NOT_FOUND
         })?;
-    Ok(Html(widgets::render_screen(screen).into_string()))
+    Ok(Html(
+        widgets::render_screen_with_options(
+            screen,
+            true,
+            None,
+            state.loopback_token.as_deref(),
+        )
+        .into_string(),
+    ))
 }
 
 // --- Server control ----------------------------------------------------------
@@ -142,30 +190,33 @@ pub async fn stop_server(State(state): State<AppState>) -> Response {
 
 #[cfg(feature = "epics")]
 async fn stop_server_impl(state: AppState) -> Response {
-    let server = state.pv_server.lock().unwrap().take();
-    match server {
-        None => (StatusCode::BAD_REQUEST, Html(
+    match protocol_control::stop_epics_server(&state).await {
+        Ok(()) => Html(maud::html! {
+            div class="warning" hx-swap-oob="true" id="server-status" {
+                span { "EPICS Server Stopped" }
+            }
+        }.into_string()).into_response(),
+        Err(ProtocolControlError::NotRunning(_)) => (StatusCode::BAD_REQUEST, Html(
             maud::html! { div class="warning" { "EPICS Server is not running" } }.into_string()
         )).into_response(),
-        Some(server) => match tokio::task::spawn_blocking(move || server.stop_drop()).await {
-            Ok(Ok(())) => Html(maud::html! {
-                div class="warning" hx-swap-oob="true" id="server-status" {
-                    span { "EPICS Server Stopped" }
-                }
-            }.into_string()).into_response(),
-            Ok(Err(e)) => {
-                tracing::error!("Failed to stop server: {}", e);
-                (StatusCode::BAD_REQUEST, Html(
-                    maud::html! { div class="error" { "Error: " (e.to_string()) } }.into_string()
-                )).into_response()
-            }
-            Err(e) => {
-                tracing::error!("Server stop task panicked: {}", e);
-                (StatusCode::INTERNAL_SERVER_ERROR, Html(
-                    maud::html! { div class="error" { "Internal error" } }.into_string()
-                )).into_response()
-            }
-        },
+        Err(ProtocolControlError::Operation(e)) => {
+            tracing::error!("Failed to stop server: {}", e);
+            (StatusCode::BAD_REQUEST, Html(
+                maud::html! { div class="error" { "Error: " (e.to_string()) } }.into_string()
+            )).into_response()
+        }
+        Err(ProtocolControlError::Internal(e)) => {
+            tracing::error!("Server stop task panicked: {}", e);
+            (StatusCode::INTERNAL_SERVER_ERROR, Html(
+                maud::html! { div class="error" { "Internal error" } }.into_string()
+            )).into_response()
+        }
+        Err(e) => {
+            tracing::error!("Failed to stop server: {}", e);
+            (StatusCode::INTERNAL_SERVER_ERROR, Html(
+                maud::html! { div class="error" { "Internal error" } }.into_string()
+            )).into_response()
+        }
     }
 }
 
@@ -187,21 +238,23 @@ pub async fn server_status(State(state): State<AppState>) -> Html<String> {
 
 pub async fn stop_modbus(State(state): State<AppState>) -> Response {
     tracing::info!("POST /api/modbus/stop");
-    let handles = state.modbus_task.lock().unwrap().take();
-    match handles {
-        None => (StatusCode::BAD_REQUEST, Html(
-            maud::html! { div class="warning" { "Modbus TCP is not running" } }.into_string()
-        )).into_response(),
-        Some(handles) => {
-            for h in handles { h.abort(); }
-            #[cfg(feature = "modbus")]
-            state.channel_ctx.modbus_pool.disconnect_all();
+    match protocol_control::stop_modbus_tasks(&state) {
+        Ok(()) => {
             tracing::info!("Modbus TCP stopped");
             Html(maud::html! {
                 div id="modbus-status" class="warning" hx-swap-oob="true" {
                     span { "Modbus TCP Stopped" }
                 }
             }.into_string()).into_response()
+        }
+        Err(ProtocolControlError::NotRunning(_)) => (StatusCode::BAD_REQUEST, Html(
+            maud::html! { div class="warning" { "Modbus TCP is not running" } }.into_string()
+        )).into_response(),
+        Err(e) => {
+            tracing::error!("Failed to stop Modbus TCP: {}", e);
+            (StatusCode::INTERNAL_SERVER_ERROR, Html(
+                maud::html! { div class="error" { "Internal error" } }.into_string()
+            )).into_response()
         }
     }
 }

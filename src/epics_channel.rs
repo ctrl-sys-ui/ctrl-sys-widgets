@@ -115,7 +115,7 @@ fn run_single_monitor(config: Arc<WidgetConfig>, epics_ctx: Arc<Mutex<Context>>,
 
 fn run_multi_monitor(
     all_pvs: Vec<String>,
-    config: Arc<WidgetConfig>,
+    _config: Arc<WidgetConfig>,
     epics_ctx: Arc<Mutex<Context>>,
     tx: UnboundedSender<ChannelEvent>,
 ) {
@@ -127,7 +127,6 @@ fn run_multi_monitor(
         .cloned()
         .enumerate()
         .map(|(idx, pv_name)| {
-            let config = config.clone();
             let all_pvs = all_pvs.clone();
             let state = state.clone();
             let tx = tx.clone();
@@ -187,10 +186,8 @@ fn run_multi_monitor(
                                 // Attach the ordered PV list via a side-channel in the
                                 // named_series map ordering — the chart renderer uses
                                 // `all_pvs` order when iterating series.
-                                // We store it in a hidden "!order" key as JSON array.
-                                let order_key = "\x00series_order".to_string();
-                                // encode order as comma-separated in a dummy series
-                                // (chart renderer ignores this key)
+                                // Keep this join to document that series order follows
+                                // the original `all_pvs` list (not hash map key order).
                                 let _ = all_pvs.join(","); // unused, order via `all_pvs` arg
                                 if tx.send(ChannelEvent::Value(cv)).is_err() {
                                     break;

@@ -2,6 +2,10 @@
 pub mod app;
 pub mod channel;
 pub mod config;
+#[cfg(feature = "desktop")]
+pub mod desktop_transport;
+pub mod ipc;
+pub mod ipc_dispatch;
 pub mod logging;
 #[cfg(feature = "epics")]
 pub mod epics_channel;
@@ -9,6 +13,7 @@ pub mod epics_channel;
 pub mod modbus_client;
 #[cfg(feature = "modbus-server")]
 pub mod modbus_server;
+pub mod protocol_control;
 #[cfg(feature = "epics")]
 pub mod server_setup;
 pub mod widgets;

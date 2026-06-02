@@ -161,6 +161,8 @@ async fn run_simulation_loop(
     loop {
         interval.tick().await;
 
+        let mut should_stop = false;
+
         for pv in sim_pvs.iter_mut() {
             match pv {
                 SimPv::DoubleArray {
@@ -176,6 +178,8 @@ async fn run_simulation_loop(
                     let data: Vec<f64> = buffer.iter().copied().collect();
                     if let Err(e) = handle.post_double_array(pv_name, data) {
                         tracing::warn!("Simulator: failed to post {}: {}", pv_name, e);
+                        should_stop = true;
+                        break;
                     }
                 }
                 SimPv::ScatterArray {
@@ -199,9 +203,16 @@ async fn run_simulation_loop(
                         .collect();
                     if let Err(e) = handle.post_double_array(pv_name, data) {
                         tracing::warn!("Simulator: failed to post {}: {}", pv_name, e);
+                        should_stop = true;
+                        break;
                     }
                 }
             }
+        }
+
+        if should_stop {
+            tracing::info!("Demo simulator: stopping after terminal post failure");
+            break;
         }
     }
 }

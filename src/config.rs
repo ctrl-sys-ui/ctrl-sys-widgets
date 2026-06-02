@@ -182,6 +182,10 @@ pub struct ModbusTCPConfig {
     /// Number of 16-bit registers to read (1 = u16, 2 = f32/u32 big-endian)
     #[serde(default = "default_word_count")]
     pub word_count: u8,
+    /// Optional bit index (0..15) to extract from the first 16-bit word.
+    /// Useful when status flags are packed into a 3x/4x register.
+    #[serde(default)]
+    pub bit_index: Option<u8>,
 }
 
 #[cfg(feature = "modbus")]

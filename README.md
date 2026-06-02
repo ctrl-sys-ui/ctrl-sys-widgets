@@ -57,6 +57,50 @@ cargo run --example demo_desktop --features desktop
 Axum binds to a random port on `127.0.0.1`; the WebView window opens pointed at
 that URL. Logs are written to `logs/mycela.log.<date>` alongside the binary.
 
+### Desktop IPC mode (no localhost listener)
+
+Use IPC transport when you want the desktop app to run without a loopback HTTP
+server.
+
+```powershell
+$env:MYCELA_DESKTOP_TRANSPORT='ipc'
+cargo run --example demo_desktop --features "epics modbus desktop"
+```
+
+Transport options:
+
+- `ipc` - Desktop WebView talks to Rust backend via IPC/custom protocol (no Axum bind)
+- `loopback` - Backward-compatible mode using localhost HTTP/SSE
+
+If the variable is not set, desktop defaults to `loopback`.
+
+### Deploying an IPC desktop executable
+
+Build a release executable:
+
+```powershell
+cargo build --release --example demo_desktop --features "epics modbus desktop"
+```
+
+Deploy these artifacts together:
+
+- `target/release/examples/demo_desktop.exe` (or renamed equivalent)
+- `logs/` directory (optional but recommended for diagnostics)
+- Any required external runtime dependencies (for Windows WebView, install Microsoft Edge WebView2 Runtime)
+
+Set transport at launch (recommended in production):
+
+```powershell
+$env:MYCELA_DESKTOP_TRANSPORT='ipc'
+./demo_desktop.exe
+```
+
+Verification checklist after deploy:
+
+- Startup log shows `Selected desktop transport: ipc`
+- No `Axum server bound on port ...` log line in IPC mode
+- EPICS/Modbus widgets connect and update normally
+
 ## Project Structure
 
 ```

@@ -23,12 +23,13 @@ mod test_widgets_container_style {
     #[test]
     fn test_no_style_config_produces_no_style_attribute_in_html() {
         let w = make_widget(None);
-        assert!(widget_container_style(&w).is_none());
+        let css = widget_container_style(&w).expect("container style is always present");
+        assert_eq!(css, "position:relative;");
         let html = render_gauge(&w).into_string();
         let outer_tag = &html[..html.find('>').unwrap() + 1];
         assert!(
-            !outer_tag.contains("style="),
-            "expected no style on outer div, got: {outer_tag}"
+            outer_tag.contains("style=\"position:relative;\""),
+            "expected default relative-position style on outer div, got: {outer_tag}"
         );
     }
 
@@ -38,6 +39,8 @@ mod test_widgets_container_style {
             width: Some("400px".into()),
             height: Some("200px".into()),
             background: None,
+            left: None,
+            top: None,
         }));
         let css = widget_container_style(&w).unwrap();
         assert!(css.contains("width:400px;"), "CSS must contain width");
@@ -45,7 +48,7 @@ mod test_widgets_container_style {
 
         let html = render_gauge(&w).into_string();
         assert!(
-            html.contains("style=\"width:400px;height:200px;\""),
+            html.contains("style=\"position:relative;width:400px;height:200px;\""),
             "rendered HTML must include inline style, got: {html}"
         );
     }
@@ -56,9 +59,11 @@ mod test_widgets_container_style {
             width: Some("50%".into()),
             height: None,
             background: None,
+            left: None,
+            top: None,
         }));
         let css = widget_container_style(&w).unwrap();
-        assert_eq!(css, "width:50%;");
+        assert_eq!(css, "position:relative;width:50%;");
         assert!(!css.contains("height"));
     }
 }
