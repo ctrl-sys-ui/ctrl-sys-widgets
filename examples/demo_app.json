@@ -140,9 +140,10 @@
               "type": "toggle_button",
               "label": "Heater",
               "data_type": "bool",
-              "description": "Toggle button — reflects live PV state, sends opposite value on click",
+              "description": "Toggle button — reflects live PV state, sends opposite value on click. Will reset to default 0 after 5s",
               "style": { "width": "100%", "height": "auto" },
-              "protocol": { "type": "epics-pva", "pv_name": "demo:heater:cmd" }
+              "protocol": { "type": "epics-pva", "pv_name": "demo:heater:cmd" },
+              "reset_timeout": 5000, "reset_default": 0
             }
           ]
         },
