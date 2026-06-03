@@ -60,7 +60,14 @@ pub fn render_inner_connected(config: &WidgetConfig, cv: &ChannelValue) -> Marku
         3 => Some(super::INVALID_SVG),
         _ => None,
     };
-    let is_on = cv.raw_value > 0.5;
+    let invert = config.invert.unwrap_or(false);
+    let is_on = if cv.raw_value == 0.0 {
+        false ^ invert
+    } else if cv.raw_value == 1.0 {
+        true ^ invert
+    } else {
+        cv.raw_value > 0.5
+    };
     render_led_html(config, is_on, icon, false, &super::build_led_tooltip(config, cv))
 }
 
