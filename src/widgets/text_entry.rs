@@ -102,6 +102,9 @@ fn render_input_html(
         div class="widget-inner" {
             label class="widget-label" {
                 (config.label)
+                @if let Some(src) = icon {
+                    img class="widget-status-icon" src=(src) alt="status";
+                }
                 @if !tooltip.is_empty() {
                     button class="widget-info-btn" data-tooltip=(tooltip) type="button" {
                         img class="info-icon info-icon--dark"  src=(super::INFO_SVG_DARK)  alt="info";
@@ -109,9 +112,6 @@ fn render_input_html(
                     }                }
             }
             div class="text-entry-with-icon-container" {
-                @if let Some(src) = icon {
-                    img class="text-entry-icon" src=(src) alt="status";
-                }
                 @if is_string {
                     input type="text"
                         class=(input_class)

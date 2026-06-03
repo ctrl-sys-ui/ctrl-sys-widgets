@@ -1,6 +1,3 @@
-// Copyright 2026 Tine Zata
-// SPDX-License-Identifier: MPL-2.0
-
 mod test_widgets_collect_data_widgets {
     use mycela::config::{WidgetConfig, WidgetType};
     use mycela::widgets::collect_data_widgets;

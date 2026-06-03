@@ -1,6 +1,3 @@
-// Copyright 2026 Tine Zata
-// SPDX-License-Identifier: MPL-2.0
-
 mod test_widget_text_entry {
     use mycela::channel::ChannelValue;
     use mycela::config::{WidgetConfig, WidgetType};

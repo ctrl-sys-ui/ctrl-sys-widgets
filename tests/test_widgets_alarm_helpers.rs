@@ -1,6 +1,3 @@
-// Copyright 2026 Tine Zata
-// SPDX-License-Identifier: MPL-2.0
-
 mod test_widgets_alarm_helpers {
     use mycela::widgets::{alarm_severity_class, alarm_status_str};
 

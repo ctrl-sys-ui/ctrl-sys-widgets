@@ -324,7 +324,7 @@ textarea, input, button, select { font-family: inherit; font-size: inherit; }
 
 /* Widget container — propagate configured width/height to children */
 [data-widget-id] {
-    overflow: hidden;
+    overflow: visible;
 }
 
 [data-widget-id] > .widget-inner {
@@ -469,15 +469,6 @@ textarea, input, button, select { font-family: inherit; font-size: inherit; }
     align-items: center;
 }
 
-.text-entry-icon {
-    position: absolute;
-    left: 8px;
-    width: 20px;
-    height: 20px;
-    pointer-events: none;
-    z-index: 1;
-}
-
 .text-entry {
     width: 100%;
     background: var(--input-bg);
@@ -486,7 +477,7 @@ textarea, input, button, select { font-family: inherit; font-size: inherit; }
     color: var(--input-text);
     font-variant-numeric: tabular-nums slashed-zero;
     font-size: 0.85rem;
-    padding: 0.5rem 2rem 0.5rem 0.5rem;
+    padding: 0.5rem 2.6rem 0.5rem 0.5rem;
     transition: all 0.2s;
     font-weight: 500;
     font-family: var(--font-monospace);
@@ -496,7 +487,7 @@ textarea, input, button, select { font-family: inherit; font-size: inherit; }
 .text-entry.alarm-major,
 .text-entry.alarm-minor,
 .text-entry.alarm-invalid {
-    padding-left: 2rem;
+    padding-left: 0.5rem;
 }
 
 .text-entry:focus {
@@ -521,6 +512,7 @@ input[type="number"]::-webkit-outer-spin-button {
 }
 
 input[type="number"] {
+    appearance: textfield;
     -moz-appearance: textfield;
 }
 
@@ -556,7 +548,7 @@ input[type="number"] {
 .text-entry-display.alarm-major,
 .text-entry-display.alarm-minor,
 .text-entry-display.alarm-invalid {
-    padding-left: 2rem;
+    padding-left: 0.5rem;
 }
 
 .text-entry-display.alarm-disconnected { border-color: var(--alarm-disconnected); border-width: 2px; }
@@ -573,15 +565,6 @@ input[type="number"] {
     align-items: center;
 }
 
-.text-update-icon {
-    position: absolute;
-    left: 8px;
-    width: 20px;
-    height: 20px;
-    pointer-events: none;
-    z-index: 1;
-}
-
 .text-update {
     width: 100%;
     background: var(--input-readonly-bg);
@@ -590,7 +573,7 @@ input[type="number"] {
     color: var(--input-readonly-text);
     font-variant-numeric: tabular-nums slashed-zero;
     font-size: 0.85rem;
-    padding: 0.5rem 2rem 0.5rem 0.5rem;
+    padding: 0.5rem 2.6rem 0.5rem 0.5rem;
     transition: all 0.2s;
     font-weight: 500;
     font-family: var(--font-monospace);
@@ -600,13 +583,13 @@ input[type="number"] {
 .text-update.alarm-major,
 .text-update.alarm-minor,
 .text-update.alarm-invalid {
-    padding-left: 2rem;
+    padding-left: 0.5rem;
 }
 
 /* Units overlay for text-update - positioned inside the input container */
 .text-update-with-icon-container .units-overlay {
     position: absolute;
-    right: 8px;
+    right: 1.9rem;
     color: #999;
     font-size: 0.85rem;
     pointer-events: none;
@@ -625,7 +608,7 @@ input[type="number"] {
 /* Legacy class names - keep for backwards compatibility */
 .units-overlay {
     position: absolute;
-    right: 10px;
+    right: 1.9rem;
     color: #666;
     font-size: 0.9rem;
     pointer-events: none;
@@ -1038,6 +1021,7 @@ input[type="number"] {
     border-radius: var(--widget-border-radius);
     padding: 0.3rem 0.4rem;
     text-align: right;
+    appearance: textfield;
     -moz-appearance: textfield;
 }
 .slider-text-entry::-webkit-outer-spin-button,
@@ -1684,6 +1668,11 @@ footer {
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
     white-space: pre-wrap;
     max-width: 256px;
+    max-height: 150px;
+    overflow-y: auto;
+    overflow-x: hidden;
+    overscroll-behavior: contain;
+    scrollbar-gutter: stable;
     word-wrap: break-word;
     position: relative;
 }

@@ -74,6 +74,15 @@ Transport options:
 
 If the variable is not set, desktop defaults to `loopback`.
 
+### Adapter Templates
+
+Starter templates are available if you want to build your own app-specific adapters:
+
+- [docs/templates/desktop_adaptor.rs](docs/templates/desktop_adaptor.rs) for IPC desktop apps
+- [docs/templates/web_adaptor.rs](docs/templates/web_adaptor.rs) for loopback / browser apps
+
+They are intended to be copied into your app crate and customized with your own routes, assets, screen IDs, and subscription logic. Replace the placeholder values such as `APP_ENTRY_PATH`, `APP_SCREEN_ID`, and `APP_SCREEN_PATH` with app-owned data.
+
 ### Deploying an IPC desktop executable
 
 Build a release executable:

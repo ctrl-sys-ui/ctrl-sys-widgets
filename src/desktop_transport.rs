@@ -1,4 +1,5 @@
 use std::env;
+use crate::config::AppConfig;
 
 pub const DESKTOP_TRANSPORT_ENV: &str = "MYCELA_DESKTOP_TRANSPORT";
 
@@ -30,6 +31,36 @@ impl DesktopTransport {
             Self::Ipc => "ipc",
         }
     }
+
+    pub fn resolve_from_sources(
+        json_transport: Option<&str>,
+        env_transport: Option<&str>,
+        allow_env_override: bool,
+    ) -> Self {
+        let mut selected = json_transport
+            .and_then(Self::parse)
+            .unwrap_or(Self::Loopback);
+
+        if allow_env_override {
+            if let Some(env_value) = env_transport {
+                if let Some(parsed) = Self::parse(env_value) {
+                    selected = parsed;
+                }
+            }
+        }
+
+        selected
+    }
+
+    pub fn from_app_config(config: &AppConfig) -> Self {
+        let json_transport = config.startup.desktop.transport.as_deref();
+        let env_transport = env::var(DESKTOP_TRANSPORT_ENV).ok();
+        Self::resolve_from_sources(
+            json_transport,
+            env_transport.as_deref(),
+            config.startup.desktop.allow_env_transport_override,
+        )
+    }
 }
 
 #[cfg(test)]
@@ -48,5 +79,35 @@ mod tests {
     #[test]
     fn parse_unknown_value() {
         assert_eq!(DesktopTransport::parse("unknown"), None);
+    }
+
+    #[test]
+    fn resolve_prefers_json_when_env_override_disabled() {
+        let resolved = DesktopTransport::resolve_from_sources(
+            Some("loopback"),
+            Some("ipc"),
+            false,
+        );
+        assert_eq!(resolved, DesktopTransport::Loopback);
+    }
+
+    #[test]
+    fn resolve_prefers_env_when_override_enabled() {
+        let resolved = DesktopTransport::resolve_from_sources(
+            Some("loopback"),
+            Some("ipc"),
+            true,
+        );
+        assert_eq!(resolved, DesktopTransport::Ipc);
+    }
+
+    #[test]
+    fn resolve_defaults_to_loopback_for_invalid_values() {
+        let resolved = DesktopTransport::resolve_from_sources(
+            Some("invalid"),
+            Some("also-invalid"),
+            true,
+        );
+        assert_eq!(resolved, DesktopTransport::Loopback);
     }
 }

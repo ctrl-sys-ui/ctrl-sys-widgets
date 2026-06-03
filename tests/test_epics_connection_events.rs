@@ -1,6 +1,3 @@
-// Copyright 2026 Tine Zata
-// SPDX-License-Identifier: MPL-2.0
-
 #![cfg(feature = "epics")]
 
 mod test_epics_connection_events {

@@ -1,6 +1,3 @@
-// Copyright 2026 Tine Zata
-// SPDX-License-Identifier: MPL-2.0
-
 mod test_widgets_container_style {
     use mycela::config::{EpicsPvaConfig, ProtocolConfig, WidgetConfig, WidgetStyle, WidgetType};
     use mycela::widgets::{render_gauge, widget_container_style};

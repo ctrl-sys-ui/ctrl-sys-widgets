@@ -69,13 +69,14 @@ tokio-modbus = { version = "0.17.0", default-features = false, features = ["tcp"
 # Desktop (optional — enable with feature "desktop")
 wry   = { version = "0.55", optional = true }
 winit = { version = "0.30", optional = true }
+tao   = { version = "0.35.3", optional = true }
 
 [features]
 default = ["epics", "modbus"]
 epics          = ["dep:pvxs-sys"]
 modbus         = ["dep:tokio-modbus"]
 modbus-server  = ["dep:tokio-modbus", "tokio-modbus/tcp-server"]
-desktop        = ["dep:wry", "dep:winit"]
+desktop        = ["dep:wry", "dep:winit", "dep:tao"]
 
 [dev-dependencies]
 rand = "0.10.1"

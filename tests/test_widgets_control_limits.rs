@@ -1,6 +1,3 @@
-// Copyright 2026 Tine Zata
-// SPDX-License-Identifier: MPL-2.0
-
 mod test_widgets_control_limits {
     use mycela::config::{ControlMetadata, PvMetadata, WidgetConfig, WidgetType};
     use mycela::widgets::check_control_limits;

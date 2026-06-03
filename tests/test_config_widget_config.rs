@@ -1,6 +1,3 @@
-// Copyright 2026 Tine Zata
-// SPDX-License-Identifier: MPL-2.0
-
 mod test_config_widget_config {
     use mycela::config::{
         AppConfig, EpicsPvaConfig, ModbusTCPConfig, ModbusRegisterType,

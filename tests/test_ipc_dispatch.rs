@@ -1,6 +1,3 @@
-// Copyright 2026 Tine Zata
-// SPDX-License-Identifier: MPL-2.0
-
 mod test_ipc_dispatch {
     use std::sync::{Arc, Mutex};
 
@@ -14,6 +11,7 @@ mod test_ipc_dispatch {
         let config = Arc::new(AppConfig {
             title: "test".to_string(),
             home_screen: None,
+            startup: Default::default(),
             screens: Vec::new(),
         });
 

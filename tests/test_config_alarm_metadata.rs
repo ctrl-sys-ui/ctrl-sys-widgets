@@ -1,6 +1,3 @@
-// Copyright 2026 Tine Zata
-// SPDX-License-Identifier: MPL-2.0
-
 mod test_config_alarm_metadata {
     use mycela::config::AlarmMetadata;
 

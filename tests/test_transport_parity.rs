@@ -1,6 +1,3 @@
-// Copyright 2026 Tine Zata
-// SPDX-License-Identifier: MPL-2.0
-
 mod test_transport_parity {
     use std::sync::{Arc, Mutex};
 
@@ -16,6 +13,7 @@ mod test_transport_parity {
         let config = Arc::new(AppConfig {
             title: "transport parity".to_string(),
             home_screen: Some("s1".to_string()),
+            startup: Default::default(),
             screens: vec![ScreenConfig {
                 id: "s1".to_string(),
                 title: "Screen 1".to_string(),

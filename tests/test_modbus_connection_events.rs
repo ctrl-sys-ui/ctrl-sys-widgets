@@ -1,6 +1,3 @@
-// Copyright 2026 Tine Zata
-// SPDX-License-Identifier: MPL-2.0
-
 #![cfg(feature = "modbus")]
 
 mod test_modbus_connection_events {

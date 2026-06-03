@@ -4,6 +4,8 @@ pub mod channel;
 pub mod config;
 #[cfg(feature = "desktop")]
 pub mod desktop_transport;
+#[cfg(feature = "desktop")]
+pub mod desktop;
 pub mod ipc;
 pub mod ipc_dispatch;
 pub mod logging;
@@ -31,3 +33,5 @@ pub use pvxs_sys;
 pub use winit;
 #[cfg(feature = "desktop")]
 pub use wry;
+#[cfg(feature = "desktop")]
+pub use tao;

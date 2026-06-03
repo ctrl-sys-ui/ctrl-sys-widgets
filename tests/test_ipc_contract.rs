@@ -1,6 +1,3 @@
-// Copyright 2026 Tine Zata
-// SPDX-License-Identifier: MPL-2.0
-
 mod test_ipc_contract {
     use mycela::ipc::{IpcCommand, IpcMessageKind, IpcRequest};
 

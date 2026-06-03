@@ -56,7 +56,67 @@ pub struct AppConfig {
     /// Screen `id` to render at `/`. Defaults to the first screen.
     #[serde(default)]
     pub home_screen: Option<String>,
+    /// Optional startup/runtime settings for desktop launch.
+    #[serde(default)]
+    pub startup: AppStartupConfig,
     pub screens: Vec<ScreenConfig>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct AppStartupConfig {
+    #[serde(default)]
+    pub desktop: DesktopStartupConfig,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DesktopStartupConfig {
+    /// Desktop transport mode selected from JSON.
+    /// Accepted values: `loopback`, `http`, `localhost`, `ipc`, `bridge`.
+    #[serde(default)]
+    pub transport: Option<String>,
+    /// When true, `MYCELA_DESKTOP_TRANSPORT` may override JSON transport.
+    #[serde(default = "default_allow_env_transport_override")]
+    pub allow_env_transport_override: bool,
+    /// Optional desktop window settings.
+    #[serde(default)]
+    pub window: DesktopWindowConfig,
+}
+
+impl Default for DesktopStartupConfig {
+    fn default() -> Self {
+        Self {
+            transport: None,
+            allow_env_transport_override: default_allow_env_transport_override(),
+            window: DesktopWindowConfig::default(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DesktopWindowConfig {
+    /// Optional native window title override.
+    #[serde(default)]
+    pub title: Option<String>,
+    /// Optional native window width in logical pixels.
+    #[serde(default)]
+    pub width: Option<f64>,
+    /// Optional native window height in logical pixels.
+    #[serde(default)]
+    pub height: Option<f64>,
+}
+
+impl Default for DesktopWindowConfig {
+    fn default() -> Self {
+        Self {
+            title: None,
+            width: None,
+            height: None,
+        }
+    }
+}
+
+fn default_allow_env_transport_override() -> bool {
+    true
 }
 
 impl AppConfig {
@@ -76,6 +136,48 @@ impl AppConfig {
     }
 
     fn validate_app_config(config: &AppConfig) -> Result<(), ConfigError> {
+        if let Some(transport) = config.startup.desktop.transport.as_deref() {
+            let normalized = transport.trim().to_ascii_lowercase();
+            let is_valid = matches!(
+                normalized.as_str(),
+                "loopback" | "http" | "localhost" | "ipc" | "bridge"
+            );
+            if !is_valid {
+                let context = format!(
+                    "Invalid startup.desktop.transport value: '{}'\n\
+                     Expected one of: loopback, http, localhost, ipc, bridge.",
+                    transport
+                );
+                let err = serde_json::from_str::<()>("\"invalid_transport\"").unwrap_err();
+                return Err(ConfigError::JsonError { source: err, context });
+            }
+        }
+
+        let window = &config.startup.desktop.window;
+        if let Some(width) = window.width {
+            if !width.is_finite() || width <= 0.0 {
+                let context = format!(
+                    "Invalid startup.desktop.window.width value: {}\n\
+                     Width must be a positive finite number.",
+                    width
+                );
+                let err = serde_json::from_str::<()>("\"invalid_window_width\"").unwrap_err();
+                return Err(ConfigError::JsonError { source: err, context });
+            }
+        }
+
+        if let Some(height) = window.height {
+            if !height.is_finite() || height <= 0.0 {
+                let context = format!(
+                    "Invalid startup.desktop.window.height value: {}\n\
+                     Height must be a positive finite number.",
+                    height
+                );
+                let err = serde_json::from_str::<()>("\"invalid_window_height\"").unwrap_err();
+                return Err(ConfigError::JsonError { source: err, context });
+            }
+        }
+
         let mut seen_screen_ids = std::collections::HashSet::new();
         let mut seen_widget_ids = std::collections::HashSet::new();
         for screen in &config.screens {
@@ -574,5 +676,103 @@ impl ScreenConfig {
         let json = serde_json::to_string_pretty(self)?;
         fs::write(path, json)?;
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::AppConfig;
+
+    fn minimal_screen_json() -> &'static str {
+        r#"
+        {
+          "id": "screen_one",
+          "title": "Screen One",
+          "description": "desc",
+          "widgets": []
+        }
+        "#
+    }
+
+    #[test]
+    fn startup_defaults_when_missing() {
+        let json = format!(
+            r#"{{
+              "title": "Test",
+              "screens": [{}]
+            }}"#,
+            minimal_screen_json()
+        );
+
+        let config: AppConfig = serde_json::from_str(&json).expect("config should parse");
+        assert!(config.startup.desktop.transport.is_none());
+        assert!(config.startup.desktop.allow_env_transport_override);
+        assert!(config.startup.desktop.window.title.is_none());
+        assert!(config.startup.desktop.window.width.is_none());
+        assert!(config.startup.desktop.window.height.is_none());
+    }
+
+    #[test]
+    fn startup_valid_transport_values_pass_validation() {
+        for value in ["loopback", "http", "localhost", "ipc", "bridge"] {
+            let json = format!(
+                r#"{{
+                  "title": "Test",
+                  "startup": {{ "desktop": {{ "transport": "{}" }} }},
+                  "screens": [{}]
+                }}"#,
+                value,
+                minimal_screen_json()
+            );
+
+            let config: AppConfig = serde_json::from_str(&json).expect("config should parse");
+            AppConfig::validate_app_config(&config).expect("transport should validate");
+        }
+    }
+
+    #[test]
+    fn startup_invalid_transport_fails_validation() {
+        let json = format!(
+            r#"{{
+              "title": "Test",
+              "startup": {{ "desktop": {{ "transport": "serial" }} }},
+              "screens": [{}]
+            }}"#,
+            minimal_screen_json()
+        );
+
+        let config: AppConfig = serde_json::from_str(&json).expect("config should parse");
+        let error = AppConfig::validate_app_config(&config).expect_err("validation should fail");
+        let text = format!("{}", error);
+        assert!(text.contains("startup.desktop.transport"));
+    }
+
+    #[test]
+    fn startup_invalid_window_dimensions_fail_validation() {
+        let width_json = format!(
+            r#"{{
+              "title": "Test",
+              "startup": {{ "desktop": {{ "window": {{ "width": 0.0 }} }} }},
+              "screens": [{}]
+            }}"#,
+            minimal_screen_json()
+        );
+        let width_config: AppConfig = serde_json::from_str(&width_json).expect("config should parse");
+        let width_error = AppConfig::validate_app_config(&width_config)
+            .expect_err("width validation should fail");
+        assert!(format!("{}", width_error).contains("startup.desktop.window.width"));
+
+        let height_json = format!(
+            r#"{{
+              "title": "Test",
+              "startup": {{ "desktop": {{ "window": {{ "height": -1.0 }} }} }},
+              "screens": [{}]
+            }}"#,
+            minimal_screen_json()
+        );
+        let height_config: AppConfig = serde_json::from_str(&height_json).expect("config should parse");
+        let height_error = AppConfig::validate_app_config(&height_config)
+            .expect_err("height validation should fail");
+        assert!(format!("{}", height_error).contains("startup.desktop.window.height"));
     }
 }

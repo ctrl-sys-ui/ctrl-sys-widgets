@@ -1,6 +1,3 @@
-// Copyright 2026 Tine Zata
-// SPDX-License-Identifier: MPL-2.0
-
 // These tests verify that each widget's `run_monitor_async` correctly maps a
 // `ChannelEvent::Disconnected` signal — coming from a live channel that has
 // dropped — to the widget's disconnected-state HTML fragment.

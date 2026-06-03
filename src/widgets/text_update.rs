@@ -83,14 +83,14 @@ fn render_display_html(
         div class="widget-inner" {
             label class="widget-label" {
                 (config.label)
+                @if let Some(src) = icon {
+                    img class="widget-status-icon" src=(src) alt="status";
+                }
                 @if !tooltip.is_empty() {
                     (super::render_info_btn(tooltip))
                 }
             }
             div class="text-update-with-icon-container" {
-                @if let Some(src) = icon {
-                    img class="text-update-icon" src=(src) alt="status";
-                }
                 input type=(input_type)
                     class=(alarm_class)
                     name="value"
