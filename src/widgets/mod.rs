@@ -268,7 +268,7 @@ fn render_action(action: &ActionConfig, nav_base: Option<&str>) -> Markup {
                 .map(|base| format!("{}/screen/{}", base, to))
                 .unwrap_or_else(|| format!("/screen/{}", to));
             html! {
-                button class="nav-button" onclick=(format!("window.open({},'_blank');", serde_json::to_string(&target).unwrap())) { (label) }
+                button class="nav-button" onclick=(format!("(function(t){{var u=t.startsWith('/') ? (window.location.origin + t) : t; window.open(u,'_blank');}})({});", serde_json::to_string(&target).unwrap())) { (label) }
             }
         }
         ActionConfig::Window { label, to } => {
@@ -276,7 +276,7 @@ fn render_action(action: &ActionConfig, nav_base: Option<&str>) -> Markup {
                 .map(|base| format!("{}/screen/{}", base, to))
                 .unwrap_or_else(|| format!("/screen/{}", to));
             html! {
-                button class="nav-button" onclick=(format!("window.open({},'_blank','width=1200,height=800,resizable=yes,scrollbars=yes');", serde_json::to_string(&target).unwrap())) { (label) }
+                button class="nav-button" onclick=(format!("(function(t){{var u=t.startsWith('/') ? (window.location.origin + t) : t; window.open(u,'_blank','width=1200,height=800,resizable=yes,scrollbars=yes');}})({});", serde_json::to_string(&target).unwrap())) { (label) }
             }
         }
         ActionConfig::Api { label, method, path } => match method.to_lowercase().as_str() {

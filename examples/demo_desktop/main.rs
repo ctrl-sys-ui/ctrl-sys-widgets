@@ -183,9 +183,7 @@ fn build_app_state(config: AppConfig, loopback_token: Option<String>) -> AppStat
                 setup_server_pvs(&server, &screen.widgets).expect("PVXS setup");
             }
             tracing::info!("PVXS server started");
-            for screen in &config.screens {
-                epics_simulator::start_demo_simulator(server.handle(), &screen.widgets);
-            }
+            epics_simulator::start_demo_simulator(server.handle(), &all_widgets);
             Arc::new(Mutex::new(Some(server)))
         }
     };
@@ -204,9 +202,13 @@ fn build_app_state(config: AppConfig, loopback_token: Option<String>) -> AppStat
         channel_ctx,
         modbus_task: Arc::new(Mutex::new(Some(vec![sim_h, listener_h]))),
         epics_start_hook: Some(Arc::new(|state, server| {
-            for screen in &state.config.screens {
-                epics_simulator::start_demo_simulator(server.handle(), &screen.widgets);
-            }
+            let all_widgets: Vec<_> = state
+                .config
+                .screens
+                .iter()
+                .flat_map(|screen| widgets::collect_data_widgets(&screen.widgets))
+                .collect();
+            epics_simulator::start_demo_simulator(server.handle(), &all_widgets);
             Ok(())
         })),
         modbus_start_hook: Some(Arc::new(|_state| {
@@ -217,7 +219,7 @@ fn build_app_state(config: AppConfig, loopback_token: Option<String>) -> AppStat
     }
 }
 
-fn build_routes(state: AppState) -> Router<AppState> {
+fn build_routes(state: AppState) -> Router {
     state
         .screen_routes()
         .route("/api/server/start", post(start_server))
