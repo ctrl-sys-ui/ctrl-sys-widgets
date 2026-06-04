@@ -386,6 +386,18 @@ pub struct WidgetConfig {
     /// Defaults to `1` (ON). Set to `0` for a button that writes OFF/close.
     #[serde(default)]
     pub write_value: Option<u16>,
+    /// Optional delayed auto-reset for `toggle_button` writes, in milliseconds.
+    ///
+    /// When set to a non-zero value, a toggle write is followed by an automatic
+    /// write of `reset_default` after the delay.
+    #[serde(default)]
+    pub reset_timeout: Option<u64>,
+    /// Default integer value written by delayed toggle auto-reset.
+    ///
+    /// Used by `toggle_button` when `reset_timeout` is set to a non-zero value.
+    /// If omitted, the reset target defaults to `0`.
+    #[serde(default)]
+    pub reset_default: Option<i64>,
 }
 
 impl WidgetConfig {

@@ -90,11 +90,12 @@ impl MultiStateLed {
 // ─── State helpers ─────────────────────────────────────────────────────────────
 
 fn state_class(raw_value: f64, invert: bool) -> &'static str {
-    match raw_value as u32 {
-        0 => if invert { "vs-open" }   else { "vs-closed" },
-        1 => if invert { "vs-closed" } else { "vs-open" },
-        _ => "vs-pending",
+    if raw_value != 0.0 && raw_value != 1.0 {
+        return "vs-pending";
     }
+
+    let is_open = (raw_value != 0.0) ^ invert;
+    if is_open { "vs-open" } else { "vs-closed" }
 }
 
 fn state_label(cls: &str) -> &'static str {

@@ -14,7 +14,7 @@ use axum::{
 };
 use crate::{
     channel::ChannelContext,
-    config::{AppConfig, WidgetType},
+    config::{AppConfig, WidgetConfig, WidgetType},
     protocol_control::{self, ProtocolControlError},
     widgets,
 };
@@ -134,11 +134,44 @@ pub async fn write_widget_markup(
                 span class="write-err" { "Widget '" (widget_id) "' not found" }
             },
         ),
-        Some(w) => (
-            StatusCode::OK,
-            widgets::write_channel(w, value, state.channel_ctx.clone()).await,
-        ),
+        Some(w) => {
+            let status = StatusCode::OK;
+            let markup = widgets::write_channel(w.clone(), value.clone(), state.channel_ctx.clone()).await;
+            maybe_schedule_toggle_reset(w, value, state.channel_ctx.clone());
+            (status, markup)
+        }
     }
+}
+
+fn maybe_schedule_toggle_reset(
+    widget: WidgetConfig,
+    clicked_value: String,
+    channel_ctx: Arc<ChannelContext>,
+) {
+    if widget.widget_type != WidgetType::ToggleButton {
+        return;
+    }
+
+    let Some(timeout_ms) = widget.reset_timeout.filter(|t| *t > 0) else {
+        return;
+    };
+
+    if clicked_value.trim().parse::<i64>().is_err() {
+        return;
+    }
+
+    let reset_value = widget.reset_default.unwrap_or(0).to_string();
+    let widget_id = widget.id.clone();
+
+    tokio::spawn(async move {
+        tokio::time::sleep(std::time::Duration::from_millis(timeout_ms)).await;
+        let result = widgets::write_channel(widget, reset_value, channel_ctx).await;
+        tracing::debug!(
+            "[{}] toggle reset_timeout elapsed; reset_default write result html: {}",
+            widget_id,
+            result.into_string()
+        );
+    });
 }
 
 // --- Home + screen render ----------------------------------------------------

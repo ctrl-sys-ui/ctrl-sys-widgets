@@ -32,6 +32,7 @@ fn now_millis() -> i64 {
 enum DesktopUserEvent {
     IpcMessage(String),
     IpcEvent(IpcEvent),
+    OpenWindow(String),
 }
 
 struct BackendRequest {
@@ -192,7 +193,8 @@ fn spawn_ipc_backend(
 
     std::thread::spawn(move || {
         let runtime = tokio::runtime::Runtime::new().expect("tokio runtime");
-        let state = (hooks.build_app_state)(config, None);
+        // Build state inside runtime context so startup hooks using tokio::spawn work in IPC mode.
+        let state = runtime.block_on(async { (hooks.build_app_state)(config, None) });
         let (event_tx, event_rx) = mpsc::channel::<IpcEvent>();
         let mut subscription_to_screen = HashMap::<String, String>::new();
         let mut screen_subscriptions = HashMap::<String, (usize, Vec<JoinHandle<()>>)>::new();
@@ -235,29 +237,24 @@ fn spawn_ipc_backend(
                             );
                         }
 
-                        if let Some((count, _)) = screen_subscriptions.get_mut(&screen_id) {
-                            *count += 1;
-                            subscription_to_screen.insert(subscription_id, screen_id);
-                            screen_subscription_response(&backend_request.request.id, true, None)
-                        } else {
-                            match runtime.block_on(async {
-                                (hooks.spawn_screen_subscription)(
-                                    &state,
-                                    &screen_id,
-                                    event_tx.clone(),
-                                )
-                            }) {
-                                Ok(handles) => {
-                                    screen_subscriptions.insert(screen_id.clone(), (1, handles));
-                                    subscription_to_screen.insert(subscription_id, screen_id);
-                                    screen_subscription_response(&backend_request.request.id, true, None)
-                                }
-                                Err(error) => screen_subscription_response(
-                                    &backend_request.request.id,
-                                    false,
-                                    Some(&error),
-                                ),
+                        match runtime.block_on(async {
+                            (hooks.spawn_screen_subscription)(
+                                &state,
+                                &screen_id,
+                                event_tx.clone(),
+                            )
+                        }) {
+                            Ok(handles) => {
+                                let subscription_key = subscription_id.clone();
+                                screen_subscriptions.insert(subscription_key.clone(), (1, handles));
+                                subscription_to_screen.insert(subscription_id, subscription_key);
+                                screen_subscription_response(&backend_request.request.id, true, None)
                             }
+                            Err(error) => screen_subscription_response(
+                                &backend_request.request.id,
+                                false,
+                                Some(&error),
+                            ),
                         }
                     }
                     _ => screen_subscription_response(
@@ -320,29 +317,24 @@ fn spawn_ipc_backend(
                             );
                         }
 
-                        if let Some((count, _)) = widget_subscriptions.get_mut(&widget_id) {
-                            *count += 1;
-                            subscription_to_widget.insert(subscription_id, widget_id);
-                            screen_subscription_response(&backend_request.request.id, true, None)
-                        } else {
-                            match runtime.block_on(async {
-                                (hooks.spawn_widget_subscription)(
-                                    &state,
-                                    &widget_id,
-                                    event_tx.clone(),
-                                )
-                            }) {
-                                Ok(handles) => {
-                                    widget_subscriptions.insert(widget_id.clone(), (1, handles));
-                                    subscription_to_widget.insert(subscription_id, widget_id);
-                                    screen_subscription_response(&backend_request.request.id, true, None)
-                                }
-                                Err(error) => screen_subscription_response(
-                                    &backend_request.request.id,
-                                    false,
-                                    Some(&error),
-                                ),
+                        match runtime.block_on(async {
+                            (hooks.spawn_widget_subscription)(
+                                &state,
+                                &widget_id,
+                                event_tx.clone(),
+                            )
+                        }) {
+                            Ok(handles) => {
+                                let subscription_key = subscription_id.clone();
+                                widget_subscriptions.insert(subscription_key.clone(), (1, handles));
+                                subscription_to_widget.insert(subscription_id, subscription_key);
+                                screen_subscription_response(&backend_request.request.id, true, None)
                             }
+                            Err(error) => screen_subscription_response(
+                                &backend_request.request.id,
+                                false,
+                                Some(&error),
+                            ),
                         }
                     }
                     _ => screen_subscription_response(
@@ -435,6 +427,10 @@ fn run_loopback_desktop(
 
     let webview = WebViewBuilder::new()
         .with_url(&url)
+        .with_new_window_req_handler(|url, _features| {
+            tracing::info!("Desktop new window request: {}", url);
+            wry::NewWindowResponse::Allow
+        })
         .build(&window)
         .expect("failed to create webview");
 
@@ -458,36 +454,59 @@ fn run_ipc_desktop(config: AppConfig, window: DesktopWindowSettings, hooks: Desk
     let proxy = event_loop.create_proxy();
     let backend_tx = spawn_ipc_backend(config.clone(), session_token.clone(), proxy.clone(), hooks.clone());
 
+    let window_title = window.title.clone();
+    let window_width = window.width;
+    let window_height = window.height;
+
     let window = WindowBuilder::new()
         .with_title(window.title)
         .with_inner_size(LogicalSize::new(window.width, window.height))
         .build(&event_loop)
         .expect("failed to create window");
+    let main_window_id = window.id();
 
     let protocol_config = config.clone();
     let protocol_token = session_token.clone();
     let protocol_response = hooks.ipc_protocol_response.clone();
     let proxy_for_ipc = proxy.clone();
+    let proxy_for_new_window = proxy.clone();
     let webview = WebViewBuilder::new()
         .with_custom_protocol("mycela".into(), move |_webview_id, request| {
             (protocol_response)(&protocol_config, &protocol_token, request)
         })
         .with_url(&format!("mycela://app{}", normalized_initial_path(&hooks.initial_path)))
+        .with_new_window_req_handler(move |url, _features| {
+            tracing::info!("Desktop new window request: {}", url);
+            let _ = proxy_for_new_window.send_event(DesktopUserEvent::OpenWindow(url));
+            wry::NewWindowResponse::Deny
+        })
         .with_ipc_handler(move |request: wry::http::Request<String>| {
             let _ = proxy_for_ipc.send_event(DesktopUserEvent::IpcMessage(request.body().clone()));
         })
         .build(&window)
         .expect("failed to create webview");
 
-    event_loop.run(move |event, _, control_flow| {
+    let mut child_windows: Vec<tao::window::Window> = Vec::new();
+    let mut child_webviews: Vec<wry::WebView> = Vec::new();
+
+    event_loop.run(move |event, event_loop_window_target, control_flow| {
         *control_flow = ControlFlow::Wait;
 
         match event {
             Event::WindowEvent {
                 event: WindowEvent::CloseRequested,
+                window_id,
                 ..
             } => {
-                *control_flow = ControlFlow::Exit;
+                if window_id == main_window_id {
+                    *control_flow = ControlFlow::Exit;
+                } else if let Some(index) = child_windows
+                    .iter()
+                    .position(|child_window| child_window.id() == window_id)
+                {
+                    child_webviews.remove(index);
+                    child_windows.remove(index);
+                }
             }
             Event::UserEvent(DesktopUserEvent::IpcMessage(payload)) => {
                 let ipc_text = payload.trim().trim_matches('"').to_ascii_lowercase();
@@ -529,6 +548,11 @@ fn run_ipc_desktop(config: AppConfig, window: DesktopWindowSettings, hooks: Desk
                 if let Err(error) = webview.evaluate_script(&script) {
                     tracing::error!("Failed to deliver IPC response to webview: {}", error);
                 }
+                for child_webview in &child_webviews {
+                    if let Err(error) = child_webview.evaluate_script(&script) {
+                        tracing::error!("Failed to deliver IPC response to child webview: {}", error);
+                    }
+                }
             }
             Event::UserEvent(DesktopUserEvent::IpcEvent(ipc_event)) => {
                 let event_json = match serde_json::to_string(&ipc_event) {
@@ -542,6 +566,56 @@ fn run_ipc_desktop(config: AppConfig, window: DesktopWindowSettings, hooks: Desk
                 if let Err(error) = webview.evaluate_script(&script) {
                     tracing::error!("Failed to deliver IPC event to webview: {}", error);
                 }
+                for child_webview in &child_webviews {
+                    if let Err(error) = child_webview.evaluate_script(&script) {
+                        tracing::error!("Failed to deliver IPC event to child webview: {}", error);
+                    }
+                }
+            }
+            Event::UserEvent(DesktopUserEvent::OpenWindow(url)) => {
+                let child_window = match WindowBuilder::new()
+                    .with_title(window_title.clone())
+                    .with_inner_size(LogicalSize::new(window_width, window_height))
+                    .build(event_loop_window_target)
+                {
+                    Ok(window) => window,
+                    Err(error) => {
+                        tracing::error!("Failed to create child window: {}", error);
+                        return;
+                    }
+                };
+
+                let child_protocol_config = config.clone();
+                let child_protocol_token = session_token.clone();
+                let child_protocol_response = hooks.ipc_protocol_response.clone();
+                let child_proxy_for_ipc = proxy.clone();
+                let child_proxy_for_new_window = proxy.clone();
+
+                let child_webview = match WebViewBuilder::new()
+                    .with_custom_protocol("mycela".into(), move |_webview_id, request| {
+                        (child_protocol_response)(&child_protocol_config, &child_protocol_token, request)
+                    })
+                    .with_url(&url)
+                    .with_new_window_req_handler(move |next_url, _features| {
+                        tracing::info!("Desktop new window request: {}", next_url);
+                        let _ = child_proxy_for_new_window.send_event(DesktopUserEvent::OpenWindow(next_url));
+                        wry::NewWindowResponse::Deny
+                    })
+                    .with_ipc_handler(move |request: wry::http::Request<String>| {
+                        let _ = child_proxy_for_ipc
+                            .send_event(DesktopUserEvent::IpcMessage(request.body().clone()));
+                    })
+                    .build(&child_window)
+                {
+                    Ok(webview) => webview,
+                    Err(error) => {
+                        tracing::error!("Failed to create child webview: {}", error);
+                        return;
+                    }
+                };
+
+                child_windows.push(child_window);
+                child_webviews.push(child_webview);
             }
             _ => {}
         }

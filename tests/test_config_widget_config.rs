@@ -160,4 +160,35 @@ mod test_config_widget_config {
         assert_eq!(alarm.low_alarm_limit, 5.0);
         assert_eq!(alarm.high_alarm_limit, 95.0);
     }
+
+    #[test]
+    fn test_toggle_button_reset_timeout_deserializes() {
+        let parsed: WidgetConfig = serde_json::from_value(serde_json::json!({
+            "id": "tb_reset",
+            "type": "toggle_button",
+            "label": "Toggle",
+            "reset_timeout": 1500,
+            "reset_default": 0
+        }))
+        .expect("widget config should deserialize");
+
+        assert_eq!(parsed.widget_type, WidgetType::ToggleButton);
+        assert_eq!(parsed.reset_timeout, Some(1500));
+        assert_eq!(parsed.reset_default, Some(0));
+    }
+
+    #[test]
+    fn test_toggle_button_reset_default_omitted_deserializes_to_none() {
+        let parsed: WidgetConfig = serde_json::from_value(serde_json::json!({
+            "id": "tb_reset_none",
+            "type": "toggle_button",
+            "label": "Toggle",
+            "reset_timeout": 500
+        }))
+        .expect("widget config should deserialize");
+
+        assert_eq!(parsed.widget_type, WidgetType::ToggleButton);
+        assert_eq!(parsed.reset_timeout, Some(500));
+        assert_eq!(parsed.reset_default, None);
+    }
 }
