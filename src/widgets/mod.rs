@@ -75,6 +75,13 @@ pub fn collect_data_widgets(widgets: &[WidgetConfig]) -> Vec<WidgetConfig> {
     result
 }
 
+///
+/// Dispatch an async widget monitor based on widget type, sending rendered HTML fragments to the provided channel.
+/// Used by the individual `/stream/screen/{screen_id}` SSE endpoint for each widget, and also by the multiplexed `/stream/all` endpoint.
+/// 
+/// The widget monitor runs indefinitely, sending updated HTML whenever the widget's data changes. 
+/// For widgets with user actions (e.g. buttons), the monitor also listens for incoming messages on its channel to receive user input and perform actions.
+/// 
 pub async fn run_widget_monitor_html_async(
     config: WidgetConfig,
     ctx: Arc<ChannelContext>,
@@ -323,7 +330,13 @@ pub fn check_control_limits(config: &WidgetConfig, value_str: &str) -> Option<Ma
     }
 }
 
-/// Write a value to a widget channel routes to EPICS or Modbus based on `config.protocol`.
+/// Thin dispatcher that calls the correct protocol adapter based on `config.protocol`.
+/// This will write/put the value on the wire.
+/// 
+/// Returns HTML markup indicating:
+/// - success ("OK")
+/// - External error ("Error: ...")
+/// - Internal error ("Internal error")
 pub async fn write_channel(
     config: WidgetConfig,
     value_str: String,

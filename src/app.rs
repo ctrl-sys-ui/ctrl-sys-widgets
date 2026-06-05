@@ -19,6 +19,7 @@ use crate::{
     widgets,
 };
 
+
 #[cfg(feature = "epics")]
 use crate::server_setup::setup_server_pvs;
 
@@ -40,24 +41,24 @@ pub type ModbusStartHook = Arc<
 /// [`AppState::screen_routes`] to build the config-driven router.
 #[derive(Clone)]
 pub struct AppState {
-    /// Running PVXS server, if the EPICS feature is enabled.
-    #[cfg(feature = "epics")]
-    pub pv_server:   Arc<Mutex<Option<pvxs_sys::Server>>>,
     /// Loaded application configuration (all screens).
     pub config:      Arc<AppConfig>,
     /// Channel context shared by all widget streams.
     pub channel_ctx: Arc<ChannelContext>,
-    /// Handles for any background Modbus simulator/connection tasks.
-    pub modbus_task: Arc<Mutex<Option<Vec<tokio::task::JoinHandle<()>>>>>,
+    /// Optional loopback session token for rendering.
+    pub loopback_token: Option<String>,
+    /// Running PVXS server, if the EPICS feature is enabled.
+    #[cfg(feature = "epics")]
+    pub pv_server:   Arc<Mutex<Option<pvxs_sys::Server>>>,
     /// Optional callback to attach app-specific EPICS simulator behavior after server start.
     #[cfg(feature = "epics")]
     pub epics_start_hook: Option<EpicsStartHook>,
+    #[cfg(feature = "modbus")]
+    /// Handles for any background Modbus simulator/connection tasks.
+    pub modbus_task: Arc<Mutex<Option<Vec<tokio::task::JoinHandle<()>>>>>,
     /// Optional callback to construct app-specific Modbus tasks when starting Modbus runtime.
     #[cfg(feature = "modbus")]
     pub modbus_start_hook: Option<ModbusStartHook>,
-        /// Optional loopback session token for rendering.
-        pub loopback_token: Option<String>,
-    
 }
 
 impl AppState {
@@ -136,6 +137,7 @@ pub async fn write_widget_markup(
         ),
         Some(w) => {
             let status = StatusCode::OK;
+            // Write the value to the channel and get the updated widget HTML to return in the response.
             let markup = widgets::write_channel(w.clone(), value.clone(), state.channel_ctx.clone()).await;
             maybe_schedule_toggle_reset(w, value, state.channel_ctx.clone());
             (status, markup)
@@ -163,6 +165,7 @@ fn maybe_schedule_toggle_reset(
     let reset_value = widget.reset_default.unwrap_or(0).to_string();
     let widget_id = widget.id.clone();
 
+    // Spawn a fire-and-forget async task to reset the toggle after the timeout.
     tokio::spawn(async move {
         tokio::time::sleep(std::time::Duration::from_millis(timeout_ms)).await;
         let result = widgets::write_channel(widget, reset_value, channel_ctx).await;
@@ -416,3 +419,5 @@ pub async fn stream_screen_widgets(
     });
     Sse::new(stream).keep_alive(KeepAlive::default())
 }
+
+

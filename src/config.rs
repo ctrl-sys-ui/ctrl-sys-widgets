@@ -315,17 +315,29 @@ pub enum ModbusRegisterType {
 }
 
 
-/// Individual widget configuration
+/// Individual widget configuration.
+/// 
+/// Every widget is described by a sinle `WidgetConfig` struct.
+/// 
+/// Required fields: `id`, `widget_type`, `label`, `protocol` and `data_type`.
+/// 
+/// **Key insights**:
+/// - `WidgetConfig` can be cloned freely — it is a plain data struct with no live connections, so it is cheap to pass around.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct WidgetConfig {
+    /// Unique widget ID (used for DOM attributes and as a key in the widget registry).
     pub id: String,
+    /// Enum for widget all types. This may be extended in the future.
     #[serde(rename = "type")]
     pub widget_type: WidgetType,
+    /// Label string for the widget.
     pub label: String,
     /// Protocol and channel address for this widget.
-    /// Required for all data widgets (everything except Group containers).
+    /// Required for all data widgets, ignored for containers, e.g. Group.
     #[serde(default)]
     pub protocol: Option<ProtocolConfig>,
+    /// Primitive data type for this widget's channel (e.g. "string", "double", "boolean", "enum").
+    /// Required for all data widgets; ignored for containers, e.g. Group.
     #[serde(default)]
     pub data_type: Option<String>,
     #[serde(default)]
