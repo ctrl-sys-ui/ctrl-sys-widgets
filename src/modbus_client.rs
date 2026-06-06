@@ -8,7 +8,7 @@ use tokio_modbus::client::tcp;
 use tokio_modbus::prelude::*;
 
 use crate::channel::{ChannelEvent, ChannelValue};
-use crate::config::{ModbusTCPConfig, ModbusRegisterType, ProtocolConfig, WidgetConfig};
+use crate::config::{ModbusRegisterType, ModbusTCPConfig, ProtocolConfig, WidgetConfig};
 
 enum DeviceRequest {
     Read {
@@ -49,7 +49,8 @@ impl DeviceHandle {
                 respond,
             })
             .map_err(|_| "device task closed".to_string())?;
-        rx.await.map_err(|_| "device task dropped respond channel".to_string())?
+        rx.await
+            .map_err(|_| "device task dropped respond channel".to_string())?
     }
 
     /// Returns `true` when the backing device task has exited and this handle
@@ -74,7 +75,8 @@ impl DeviceHandle {
                 respond,
             })
             .map_err(|_| "device task closed".to_string())?;
-        rx.await.map_err(|_| "device task dropped respond channel".to_string())?
+        rx.await
+            .map_err(|_| "device task dropped respond channel".to_string())?
     }
 }
 
@@ -106,12 +108,7 @@ impl ModbusPool {
     }
 
     /// Return the existing handle for this device or create a new connection-manager task.
-    pub fn get_or_create(
-        &self,
-        host: &str,
-        port: u16,
-        unit_id: u8,
-    ) -> Arc<DeviceHandle> {
+    pub fn get_or_create(&self, host: &str, port: u16, unit_id: u8) -> Arc<DeviceHandle> {
         let key = format!("{}:{}:{}", host, port, unit_id);
         if let Some(h) = self.devices.get(&key) {
             return h.clone();
@@ -135,25 +132,39 @@ async fn run_device_task(
     unit_id: u8,
     mut rx: mpsc::UnboundedReceiver<DeviceRequest>,
 ) {
-    let addr: SocketAddr = format!("{}:{}", host, port)
-        .parse()
-        .unwrap_or_else(|_| "127.0.0.1:502".parse().unwrap());
+    // Resolve hostname → SocketAddr (supports both IP literals and DNS names).
+    // On failure, report the error to all pending callers and exit the task.
+    let target = format!("{}:{}", host, port);
+    let addr: SocketAddr = {
+        match tokio::net::lookup_host(&target).await {
+            Ok(mut addrs) => match addrs.next() {
+                Some(addr) => addr,
+                None => {
+                    tracing::error!("Modbus: hostname '{}' resolved to no addresses", target);
+                    while let Some(req) = rx.recv().await {
+                        send_error(req, format!("hostname '{}' resolved to no addresses", host));
+                    }
+                    return;
+                }
+            },
+            Err(e) => {
+                tracing::error!("Modbus: failed to resolve hostname '{}': {}", target, e);
+                while let Some(req) = rx.recv().await {
+                    send_error(req, format!("DNS resolution failed for '{}': {}", host, e));
+                }
+                return;
+            }
+        }
+    };
     let unit = Slave(unit_id);
 
     loop {
         // Connect (or reconnect after an error)
         let mut ctx = loop {
-            match tokio::time::timeout(
-                Duration::from_secs(2),
-                tcp::connect_slave(addr, unit),
-            ).await {
+            match tokio::time::timeout(Duration::from_secs(2), tcp::connect_slave(addr, unit)).await
+            {
                 Ok(Ok(c)) => {
-                    tracing::info!(
-                        "Modbus connected to {}:{} unit {}",
-                        host,
-                        port,
-                        unit_id
-                    );
+                    tracing::info!("Modbus connected to {}:{} unit {}", host, port, unit_id);
                     break c;
                 }
                 Ok(Err(e)) => {
@@ -382,8 +393,7 @@ async fn run_modbus_poll(
     );
 
     let mut handle = pool.get_or_create(&m.host, m.port, m.unit_id);
-    let mut interval =
-        tokio::time::interval(Duration::from_millis(m.min_poll_interval_ms.max(50)));
+    let mut interval = tokio::time::interval(Duration::from_millis(m.min_poll_interval_ms.max(50)));
     let mut was_connected = false;
     let mut last_value_str: Option<String> = None;
 
@@ -397,7 +407,10 @@ async fn run_modbus_poll(
             if was_connected {
                 was_connected = false;
                 last_value_str = None;
-                if tx.send(ChannelEvent::Disconnected("connection closed".to_string())).is_err() {
+                if tx
+                    .send(ChannelEvent::Disconnected("connection closed".to_string()))
+                    .is_err()
+                {
                     break;
                 }
             }
@@ -484,14 +497,20 @@ fn decode_words(words: &[u16], word_count: u8) -> f64 {
     }
 }
 
-pub fn build_channel_value(physical: f64, m: &ModbusTCPConfig, config: &WidgetConfig) -> ChannelValue {
+pub fn build_channel_value(
+    physical: f64,
+    m: &ModbusTCPConfig,
+    config: &WidgetConfig,
+) -> ChannelValue {
     let meta_display = config.metadata.as_ref().and_then(|md| md.display.as_ref());
     let meta_control = config.metadata.as_ref().and_then(|md| md.control.as_ref());
-    let meta_alarm   = config.metadata.as_ref().and_then(|md| md.alarm.as_ref());
+    let meta_alarm = config.metadata.as_ref().and_then(|md| md.alarm.as_ref());
 
-    let precision    = meta_display.map(|d| d.precision).unwrap_or(2);
-    let units       = meta_display.map(|d| d.units.clone()).unwrap_or_default();
-    let description = meta_display.map(|d| d.description.clone()).unwrap_or_default();
+    let precision = meta_display.map(|d| d.precision).unwrap_or(2);
+    let units = meta_display.map(|d| d.units.clone()).unwrap_or_default();
+    let description = meta_display
+        .map(|d| d.description.clone())
+        .unwrap_or_default();
 
     let value_str = match config.data_type.as_deref() {
         Some("bool") | Some("int32") | Some("int") => (physical as i64).to_string(),
@@ -500,12 +519,14 @@ pub fn build_channel_value(physical: f64, m: &ModbusTCPConfig, config: &WidgetCo
 
     // Display / control range: prefer config metadata, then derive from register range
     let raw_range_high = 65535.0 * m.scale + m.offset;
-    let display_low  = meta_display.map(|d| d.limit_low) .unwrap_or(m.offset);
+    let display_low = meta_display.map(|d| d.limit_low).unwrap_or(m.offset);
     let display_high = meta_display.map(|d| d.limit_high).unwrap_or(raw_range_high);
-    let control_low  = meta_control.map(|c| c.limit_low) .unwrap_or(display_low);
+    let control_low = meta_control.map(|c| c.limit_low).unwrap_or(display_low);
     let control_high = meta_control.map(|c| c.limit_high).unwrap_or(display_high);
 
-    let alarm_severity = meta_alarm.map(|a| a.compute_severity(physical)).unwrap_or(0);
+    let alarm_severity = meta_alarm
+        .map(|a| a.compute_severity(physical))
+        .unwrap_or(0);
 
     ChannelValue {
         raw_value: physical,
@@ -515,10 +536,14 @@ pub fn build_channel_value(physical: f64, m: &ModbusTCPConfig, config: &WidgetCo
         display_high,
         control_low,
         control_high,
-        low_alarm_limit:  meta_alarm.map(|a| a.low_alarm_limit)    .unwrap_or(0.0),
-        low_warn_limit:   meta_alarm.map(|a| a.low_warning_limit)  .unwrap_or(0.0),
-        high_warn_limit:  meta_alarm.map(|a| a.high_warning_limit) .unwrap_or(display_high),
-        high_alarm_limit: meta_alarm.map(|a| a.high_alarm_limit)   .unwrap_or(display_high),
+        low_alarm_limit: meta_alarm.map(|a| a.low_alarm_limit).unwrap_or(0.0),
+        low_warn_limit: meta_alarm.map(|a| a.low_warning_limit).unwrap_or(0.0),
+        high_warn_limit: meta_alarm
+            .map(|a| a.high_warning_limit)
+            .unwrap_or(display_high),
+        high_alarm_limit: meta_alarm
+            .map(|a| a.high_alarm_limit)
+            .unwrap_or(display_high),
         alarm_severity,
         primary_meta: crate::channel::PrimaryMeta {
             alarm_severity,
@@ -551,7 +576,7 @@ pub async fn modbus_write(
         vec![raw.round().clamp(0.0, 65535.0) as u16]
     };
 
-    handle.write(m.register, m.register_type.clone(), words).await
+    handle
+        .write(m.register, m.register_type.clone(), words)
+        .await
 }
-
-
