@@ -1,12 +1,15 @@
 use serde::{Deserialize, Serialize};
-use std::fs;
 use std::fmt;
+use std::fs;
 
 /// Custom error type for configuration loading
 #[derive(Debug)]
 pub enum ConfigError {
     FileError(std::io::Error),
-    JsonError { source: serde_json::Error, context: String },
+    JsonError {
+        source: serde_json::Error,
+        context: String,
+    },
 }
 
 impl fmt::Display for ConfigError {
@@ -44,7 +47,11 @@ pub enum ActionConfig {
     /// Button that opens another screen in a new browser window.
     Window { label: String, to: String },
     /// HTMX button that calls a custom API endpoint.
-    Api { label: String, method: String, path: String },
+    Api {
+        label: String,
+        method: String,
+        path: String,
+    },
 }
 
 /// Application configuration — the top-level `app.json` format.
@@ -149,7 +156,10 @@ impl AppConfig {
                     transport
                 );
                 let err = serde_json::from_str::<()>("\"invalid_transport\"").unwrap_err();
-                return Err(ConfigError::JsonError { source: err, context });
+                return Err(ConfigError::JsonError {
+                    source: err,
+                    context,
+                });
             }
         }
 
@@ -162,7 +172,10 @@ impl AppConfig {
                     width
                 );
                 let err = serde_json::from_str::<()>("\"invalid_window_width\"").unwrap_err();
-                return Err(ConfigError::JsonError { source: err, context });
+                return Err(ConfigError::JsonError {
+                    source: err,
+                    context,
+                });
             }
         }
 
@@ -174,7 +187,10 @@ impl AppConfig {
                     height
                 );
                 let err = serde_json::from_str::<()>("\"invalid_window_height\"").unwrap_err();
-                return Err(ConfigError::JsonError { source: err, context });
+                return Err(ConfigError::JsonError {
+                    source: err,
+                    context,
+                });
             }
         }
 
@@ -187,7 +203,10 @@ impl AppConfig {
                     screen.id
                 );
                 let err = serde_json::from_str::<()>("\"duplicate_screen_id\"").unwrap_err();
-                return Err(ConfigError::JsonError { source: err, context });
+                return Err(ConfigError::JsonError {
+                    source: err,
+                    context,
+                });
             }
             ScreenConfig::validate_widgets(&screen.widgets, &mut seen_widget_ids)?;
         }
@@ -217,8 +236,8 @@ pub struct ScreenConfig {
 /// { "type": "modbus-tcp", "host": "127.0.0.1", "register": 1000, ... }
 /// ```
 /// Adding a new protocol = one new enum variant + struct, no changes to WidgetConfig.
-/// 
-/// This enum is extensible because new protocols will be added over time, 
+///
+/// This enum is extensible because new protocols will be added over time,
 /// therefore is use will prevent match statments lacking a wildcard arm.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "kebab-case")]
@@ -291,17 +310,29 @@ pub struct ModbusTCPConfig {
 }
 
 #[cfg(feature = "modbus")]
-fn default_modbus_port() -> u16 { 502 }
+fn default_modbus_port() -> u16 {
+    502
+}
 #[cfg(feature = "modbus")]
-fn default_unit_id() -> u8 { 1 }
+fn default_unit_id() -> u8 {
+    1
+}
 #[cfg(feature = "modbus")]
-fn default_min_poll_interval_ms() -> u64 { 500 }
+fn default_min_poll_interval_ms() -> u64 {
+    500
+}
 #[cfg(feature = "modbus")]
-fn default_scale() -> f64 { 1.0 }
+fn default_scale() -> f64 {
+    1.0
+}
 #[cfg(feature = "modbus")]
-fn default_offset() -> f64 { 0.0 }
+fn default_offset() -> f64 {
+    0.0
+}
 #[cfg(feature = "modbus")]
-fn default_word_count() -> u8 { 1 }
+fn default_word_count() -> u8 {
+    1
+}
 
 /// Modbus register / coil type.
 #[cfg(feature = "modbus")]
@@ -314,13 +345,12 @@ pub enum ModbusRegisterType {
     DiscreteInput,
 }
 
-
 /// Individual widget configuration.
-/// 
+///
 /// Every widget is described by a sinle `WidgetConfig` struct.
-/// 
+///
 /// Required fields: `id`, `widget_type`, `label`, `protocol` and `data_type`.
-/// 
+///
 /// **Key insights**:
 /// - `WidgetConfig` can be cloned freely — it is a plain data struct with no live connections, so it is cheap to pass around.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -449,8 +479,10 @@ impl WidgetConfig {
 #[cfg(feature = "epics")]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ServerConfig {
-    #[serde(default)]
-    pub alarm_serverity: Option<String>,
+    /// Alarm severity for this PV's initial state. Accepted values: `NONE`, `MINOR`, `MAJOR`, `INVALID`.
+    /// Both `alarm_severity` (correct spelling) and the legacy `alarm_serverity` (typo) are accepted.
+    #[serde(default, alias = "alarm_serverity")]
+    pub alarm_severity: Option<String>,
     #[serde(default)]
     pub alarm_status: Option<String>,
     #[serde(default)]
@@ -505,7 +537,11 @@ pub struct AlarmMetadata {
 
 impl AlarmMetadata {
     fn severity_int(s: &str) -> i32 {
-        match s { "MAJOR" => 2, "MINOR" => 1, _ => 0 }
+        match s {
+            "MAJOR" => 2,
+            "MINOR" => 1,
+            _ => 0,
+        }
     }
 
     /// Compute alarm severity (0=none, 1=MINOR, 2=MAJOR) for a given scalar value.
@@ -572,7 +608,7 @@ impl ScreenConfig {
     /// Load screen configuration from JSON file
     pub fn load(path: &str) -> Result<Self, ConfigError> {
         let content = fs::read_to_string(path)?;
-        
+
         match serde_json::from_str::<ScreenConfig>(&content) {
             Ok(config) => {
                 // Validate the config has required fields populated correctly
@@ -585,7 +621,7 @@ impl ScreenConfig {
             }
         }
     }
-    
+
     /// Validate that the configuration has all required data
     pub fn validate_config(config: &ScreenConfig) -> Result<(), ConfigError> {
         let mut seen_ids = std::collections::HashSet::new();
@@ -602,13 +638,13 @@ impl ScreenConfig {
                 let context = format!(
                     "Widget #{} has duplicate ID: '{}'\n\
                      Each widget must have a unique 'id' field.",
-                    idx + 1, widget.id
+                    idx + 1,
+                    widget.id
                 );
-                let err = serde_json::from_str::<()>("\"duplicate_id\"")
-                    .unwrap_err();
-                return Err(ConfigError::JsonError { 
+                let err = serde_json::from_str::<()>("\"duplicate_id\"").unwrap_err();
+                return Err(ConfigError::JsonError {
                     source: err,
-                    context 
+                    context,
                 });
             }
             if let Some(children) = &widget.children {
@@ -617,21 +653,21 @@ impl ScreenConfig {
         }
         Ok(())
     }
-    
+
     /// Build a helpful error context message
     fn build_error_context(error: &serde_json::Error, content: &str, path: &str) -> String {
         let mut context = format!("File: {}\n", path);
-        
+
         // Try to determine what's wrong and where
         let line = error.line();
         if line > 0 {
             context.push_str(&format!("Line: {}, Column: {}\n\n", line, error.column()));
-            
+
             // Show the problematic line and surrounding context
             let lines: Vec<&str> = content.lines().collect();
             let start = line.saturating_sub(3);
             let end = (line + 2).min(lines.len());
-            
+
             context.push_str("Context:\n");
             for (i, line_content) in lines[start..end].iter().enumerate() {
                 let line_num = start + i + 1;
@@ -643,13 +679,13 @@ impl ScreenConfig {
             }
             context.push_str("\n");
         }
-        
+
         // Add helpful hints based on error message
         let error_msg = error.to_string();
         context.push_str("Error: ");
         context.push_str(&error_msg);
         context.push_str("\n\n");
-        
+
         if error_msg.contains("missing field") {
             if let Some(field_name) = Self::extract_field_name(&error_msg) {
                 context.push_str("💡 Hint: ");
@@ -662,10 +698,10 @@ impl ScreenConfig {
         } else if error_msg.contains("invalid type") {
             context.push_str("💡 Hint: Check that the field has the correct data type (string, number, boolean, etc.)\n");
         }
-        
+
         context
     }
-    
+
     /// Extract field name from serde error message
     fn extract_field_name(error_msg: &str) -> Option<String> {
         // Pattern: "missing field `fieldname`"
@@ -677,7 +713,7 @@ impl ScreenConfig {
         }
         None
     }
-    
+
     /// Get helpful hint for a missing field
     fn get_field_hint(field_name: &str) -> String {
         match field_name {
@@ -694,7 +730,7 @@ impl ScreenConfig {
             _ => format!("The field '{}' is required but missing.", field_name),
         }
     }
-    
+
     /// Save screen configuration to JSON file
     pub fn save(&self, path: &str) -> Result<(), Box<dyn std::error::Error>> {
         let json = serde_json::to_string_pretty(self)?;
@@ -781,7 +817,8 @@ mod tests {
             }}"#,
             minimal_screen_json()
         );
-        let width_config: AppConfig = serde_json::from_str(&width_json).expect("config should parse");
+        let width_config: AppConfig =
+            serde_json::from_str(&width_json).expect("config should parse");
         let width_error = AppConfig::validate_app_config(&width_config)
             .expect_err("width validation should fail");
         assert!(format!("{}", width_error).contains("startup.desktop.window.width"));
@@ -794,7 +831,8 @@ mod tests {
             }}"#,
             minimal_screen_json()
         );
-        let height_config: AppConfig = serde_json::from_str(&height_json).expect("config should parse");
+        let height_config: AppConfig =
+            serde_json::from_str(&height_json).expect("config should parse");
         let height_error = AppConfig::validate_app_config(&height_config)
             .expect_err("height validation should fail");
         assert!(format!("{}", height_error).contains("startup.desktop.window.height"));
