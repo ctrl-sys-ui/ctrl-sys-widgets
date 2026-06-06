@@ -1,6 +1,6 @@
 use std::borrow::Cow;
 use std::collections::HashMap;
-use std::sync::{Arc, mpsc};
+use std::sync::{mpsc, Arc};
 
 use axum::Router;
 use tao::{
@@ -13,10 +13,7 @@ use tokio::task::JoinHandle;
 use wry::WebViewBuilder;
 
 use crate::app::AppState;
-use crate::axum::http::{
-    Request as HttpRequest,
-    Response as HttpResponse,
-};
+use crate::axum::http::{Request as HttpRequest, Response as HttpResponse};
 use crate::config::AppConfig;
 use crate::desktop_transport::DesktopTransport;
 use crate::ipc::{IpcCommand, IpcEvent, IpcMessageKind, IpcRequest, IpcResponse};
@@ -51,10 +48,7 @@ impl DesktopWindowSettings {
     pub fn from_app_config(config: &AppConfig) -> Self {
         let window = &config.startup.desktop.window;
         Self {
-            title: window
-                .title
-                .clone()
-                .unwrap_or_else(|| config.title.clone()),
+            title: window.title.clone().unwrap_or_else(|| config.title.clone()),
             width: window.width.unwrap_or(1400.0),
             height: window.height.unwrap_or(778.0),
         }
@@ -64,7 +58,9 @@ impl DesktopWindowSettings {
 type BuildAppStateFn = Arc<dyn Fn(AppConfig, Option<String>) -> AppState + Send + Sync>;
 type BuildLoopbackRouterFn = Arc<dyn Fn(AppState) -> Router + Send + Sync>;
 type IpcProtocolResponseFn = Arc<
-    dyn Fn(&AppConfig, &str, HttpRequest<Vec<u8>>) -> HttpResponse<Cow<'static, [u8]>> + Send + Sync,
+    dyn Fn(&AppConfig, &str, HttpRequest<Vec<u8>>) -> HttpResponse<Cow<'static, [u8]>>
+        + Send
+        + Sync,
 >;
 type SpawnSubscriptionFn = Arc<
     dyn Fn(&AppState, &str, mpsc::Sender<IpcEvent>) -> Result<Vec<JoinHandle<()>>, String>
@@ -89,28 +85,16 @@ impl DesktopRuntimeHooks {
     pub fn new(
         build_app_state: impl Fn(AppConfig, Option<String>) -> AppState + Send + Sync + 'static,
         build_loopback_router: impl Fn(AppState) -> Router + Send + Sync + 'static,
-        ipc_protocol_response: impl Fn(
-                &AppConfig,
-                &str,
-                HttpRequest<Vec<u8>>,
-            ) -> HttpResponse<Cow<'static, [u8]>>
+        ipc_protocol_response: impl Fn(&AppConfig, &str, HttpRequest<Vec<u8>>) -> HttpResponse<Cow<'static, [u8]>>
             + Send
             + Sync
             + 'static,
-        spawn_screen_subscription: impl Fn(
-                &AppState,
-                &str,
-                mpsc::Sender<IpcEvent>,
-            ) -> Result<Vec<JoinHandle<()>>, String>
+        spawn_screen_subscription: impl Fn(&AppState, &str, mpsc::Sender<IpcEvent>) -> Result<Vec<JoinHandle<()>>, String>
             + Send
             + Sync
             + 'static,
         stop_screen_subscription: impl Fn(Vec<JoinHandle<()>>) + Send + Sync + 'static,
-        spawn_widget_subscription: impl Fn(
-                &AppState,
-                &str,
-                mpsc::Sender<IpcEvent>,
-            ) -> Result<Vec<JoinHandle<()>>, String>
+        spawn_widget_subscription: impl Fn(&AppState, &str, mpsc::Sender<IpcEvent>) -> Result<Vec<JoinHandle<()>>, String>
             + Send
             + Sync
             + 'static,
@@ -139,11 +123,23 @@ fn normalized_initial_path(path: &str) -> String {
 }
 
 fn generate_session_token(prefix: &str) -> String {
-    let now = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .expect("system clock before unix epoch")
-        .as_nanos();
-    format!("{}-{}-{}", prefix, std::process::id(), now)
+    use std::collections::hash_map::RandomState;
+    use std::hash::{BuildHasher, Hasher};
+
+    // RandomState seeds itself from OS entropy (getrandom / CryptGenRandom) on
+    // every ::new() call.  Two independent instances yield 128 bits of output
+    // that an attacker cannot predict without knowing the internal seeds.
+    let rand_a = {
+        let mut h = RandomState::new().build_hasher();
+        h.write_u8(0);
+        h.finish()
+    };
+    let rand_b = {
+        let mut h = RandomState::new().build_hasher();
+        h.write_u8(0);
+        h.finish()
+    };
+    format!("{}-{:016x}{:016x}", prefix, rand_a, rand_b)
 }
 
 fn screen_subscription_response(id: &str, ok: bool, message: Option<&str>) -> IpcResponse {
@@ -204,7 +200,10 @@ fn spawn_ipc_backend(
         let proxy_clone = proxy.clone();
         std::thread::spawn(move || {
             while let Ok(event) = event_rx.recv() {
-                if proxy_clone.send_event(DesktopUserEvent::IpcEvent(event)).is_err() {
+                if proxy_clone
+                    .send_event(DesktopUserEvent::IpcEvent(event))
+                    .is_err()
+                {
                     break;
                 }
             }
@@ -238,17 +237,17 @@ fn spawn_ipc_backend(
                         }
 
                         match runtime.block_on(async {
-                            (hooks.spawn_screen_subscription)(
-                                &state,
-                                &screen_id,
-                                event_tx.clone(),
-                            )
+                            (hooks.spawn_screen_subscription)(&state, &screen_id, event_tx.clone())
                         }) {
                             Ok(handles) => {
                                 let subscription_key = subscription_id.clone();
                                 screen_subscriptions.insert(subscription_key.clone(), (1, handles));
                                 subscription_to_screen.insert(subscription_id, subscription_key);
-                                screen_subscription_response(&backend_request.request.id, true, None)
+                                screen_subscription_response(
+                                    &backend_request.request.id,
+                                    true,
+                                    None,
+                                )
                             }
                             Err(error) => screen_subscription_response(
                                 &backend_request.request.id,
@@ -318,17 +317,17 @@ fn spawn_ipc_backend(
                         }
 
                         match runtime.block_on(async {
-                            (hooks.spawn_widget_subscription)(
-                                &state,
-                                &widget_id,
-                                event_tx.clone(),
-                            )
+                            (hooks.spawn_widget_subscription)(&state, &widget_id, event_tx.clone())
                         }) {
                             Ok(handles) => {
                                 let subscription_key = subscription_id.clone();
                                 widget_subscriptions.insert(subscription_key.clone(), (1, handles));
                                 subscription_to_widget.insert(subscription_id, subscription_key);
-                                screen_subscription_response(&backend_request.request.id, true, None)
+                                screen_subscription_response(
+                                    &backend_request.request.id,
+                                    true,
+                                    None,
+                                )
                             }
                             Err(error) => screen_subscription_response(
                                 &backend_request.request.id,
@@ -452,7 +451,12 @@ fn run_ipc_desktop(config: AppConfig, window: DesktopWindowSettings, hooks: Desk
     let session_token = generate_session_token("ipc");
     let event_loop = EventLoopBuilder::<DesktopUserEvent>::with_user_event().build();
     let proxy = event_loop.create_proxy();
-    let backend_tx = spawn_ipc_backend(config.clone(), session_token.clone(), proxy.clone(), hooks.clone());
+    let backend_tx = spawn_ipc_backend(
+        config.clone(),
+        session_token.clone(),
+        proxy.clone(),
+        hooks.clone(),
+    );
 
     let window_title = window.title.clone();
     let window_width = window.width;
@@ -474,7 +478,10 @@ fn run_ipc_desktop(config: AppConfig, window: DesktopWindowSettings, hooks: Desk
         .with_custom_protocol("mycela".into(), move |_webview_id, request| {
             (protocol_response)(&protocol_config, &protocol_token, request)
         })
-        .with_url(&format!("mycela://app{}", normalized_initial_path(&hooks.initial_path)))
+        .with_url(&format!(
+            "mycela://app{}",
+            normalized_initial_path(&hooks.initial_path)
+        ))
         .with_new_window_req_handler(move |url, _features| {
             tracing::info!("Desktop new window request: {}", url);
             let _ = proxy_for_new_window.send_event(DesktopUserEvent::OpenWindow(url));
@@ -524,7 +531,13 @@ fn run_ipc_desktop(config: AppConfig, window: DesktopWindowSettings, hooks: Desk
                 };
 
                 let (response_tx, response_rx) = mpsc::channel();
-                if backend_tx.send(BackendRequest { request, response_tx }).is_err() {
+                if backend_tx
+                    .send(BackendRequest {
+                        request,
+                        response_tx,
+                    })
+                    .is_err()
+                {
                     tracing::error!("Failed to send IPC request to backend");
                     return;
                 }
@@ -550,7 +563,10 @@ fn run_ipc_desktop(config: AppConfig, window: DesktopWindowSettings, hooks: Desk
                 }
                 for child_webview in &child_webviews {
                     if let Err(error) = child_webview.evaluate_script(&script) {
-                        tracing::error!("Failed to deliver IPC response to child webview: {}", error);
+                        tracing::error!(
+                            "Failed to deliver IPC response to child webview: {}",
+                            error
+                        );
                     }
                 }
             }
@@ -593,12 +609,17 @@ fn run_ipc_desktop(config: AppConfig, window: DesktopWindowSettings, hooks: Desk
 
                 let child_webview = match WebViewBuilder::new()
                     .with_custom_protocol("mycela".into(), move |_webview_id, request| {
-                        (child_protocol_response)(&child_protocol_config, &child_protocol_token, request)
+                        (child_protocol_response)(
+                            &child_protocol_config,
+                            &child_protocol_token,
+                            request,
+                        )
                     })
                     .with_url(&url)
                     .with_new_window_req_handler(move |next_url, _features| {
                         tracing::info!("Desktop new window request: {}", next_url);
-                        let _ = child_proxy_for_new_window.send_event(DesktopUserEvent::OpenWindow(next_url));
+                        let _ = child_proxy_for_new_window
+                            .send_event(DesktopUserEvent::OpenWindow(next_url));
                         wry::NewWindowResponse::Deny
                     })
                     .with_ipc_handler(move |request: wry::http::Request<String>| {
