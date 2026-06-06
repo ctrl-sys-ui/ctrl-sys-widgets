@@ -1,9 +1,9 @@
-use maud::{html, Markup};
-use std::sync::Arc;
-use futures::StreamExt;
-use tokio::time::{Duration, Instant};
 use crate::channel::{ChannelContext, ChannelEvent, ChannelValue};
 use crate::config::WidgetConfig;
+use futures::StreamExt;
+use maud::{html, Markup};
+use std::sync::Arc;
+use tokio::time::{Duration, Instant};
 
 pub struct ToggleButton {
     config: WidgetConfig,
@@ -35,13 +35,29 @@ impl ToggleButton {
             }
         }
     }
-
 }
 
 pub fn render_inner_connected(config: &WidgetConfig, cv: &ChannelValue) -> Markup {
     let is_on = cv.raw_value > 0.5;
     let next_val = if is_on { "0" } else { "1" };
-    render_toggle_html(config, is_on, next_val, false, &super::build_tooltip(config, cv), None)
+    // When a reset_timeout is configured and the button is ON, show the initial
+    // full-timeout countdown so a static render is consistent with the live SSE view.
+    let countdown_secs = if is_on {
+        config
+            .reset_timeout
+            .filter(|&ms| ms > 0)
+            .map(|ms| (ms / 1000).max(1))
+    } else {
+        None
+    };
+    render_toggle_html(
+        config,
+        is_on,
+        next_val,
+        false,
+        &super::build_tooltip(config, cv),
+        countdown_secs,
+    )
 }
 
 pub fn render_inner_disconnected(config: &WidgetConfig) -> Markup {
@@ -150,7 +166,8 @@ impl ToggleButton {
         ctx: Arc<ChannelContext>,
         tx: tokio::sync::mpsc::UnboundedSender<String>,
     ) {
-        let mut stream = crate::channel::channel_stream(config.clone(), ctx);
+        // Clone ctx so it remains available for reset writes after the stream takes ownership.
+        let mut stream = crate::channel::channel_stream(config.clone(), ctx.clone());
         let mut countdown_end: Option<Instant> = None;
         let mut last_value: Option<ChannelValue> = None;
 
@@ -175,7 +192,8 @@ impl ToggleButton {
                     let is_on = cv.raw_value > 0.5;
                     if is_on {
                         if let Some(timeout_ms) = config.reset_timeout.filter(|ms| *ms > 0) {
-                            countdown_end = Some(Instant::now() + Duration::from_millis(timeout_ms));
+                            countdown_end =
+                                Some(Instant::now() + Duration::from_millis(timeout_ms));
                         } else {
                             countdown_end = None;
                         }
@@ -202,15 +220,35 @@ impl ToggleButton {
                 NextEvent::Tick => {
                     if let (Some(end), Some(cv)) = (countdown_end, last_value.as_ref()) {
                         let now = Instant::now();
-                        let countdown_secs = end
-                            .checked_duration_since(now)
-                            .map(|d| d.as_secs().max(1));
+                        let countdown_secs =
+                            end.checked_duration_since(now).map(|d| d.as_secs().max(1));
 
                         if countdown_secs.is_none() {
+                            // Countdown has expired.  Write reset_default to the channel so
+                            // the PV/register is actually reset.  This fires unconditionally
+                            // — whether the ON state came from a button click or an external
+                            // channel event — so the button always resets after the timeout.
                             countdown_end = None;
-                        }
-
-                        if tx
+                            let reset_value = config.reset_default.unwrap_or(0).to_string();
+                            let config_write = config.clone();
+                            let ctx_write = ctx.clone();
+                            tokio::spawn(async move {
+                                tracing::debug!(
+                                    "[{}] toggle countdown expired — writing reset_default={}",
+                                    config_write.id,
+                                    reset_value
+                                );
+                                let _ = crate::widgets::write_channel(
+                                    (*config_write).clone(),
+                                    reset_value,
+                                    ctx_write,
+                                )
+                                .await;
+                            });
+                            // Don't push an SSE update here; wait for the channel to echo
+                            // back the written value so the button transitions directly
+                            // from the last countdown tick to OFF with no "pressed" flash.
+                        } else if tx
                             .send(
                                 render_inner_connected_with_countdown(&config, cv, countdown_secs)
                                     .into_string(),
