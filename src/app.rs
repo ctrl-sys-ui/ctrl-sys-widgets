@@ -4,33 +4,36 @@
 //! routes pre-wired, then layer on your own custom routes before finalising
 //! with `.with_state(state)`.
 
-use std::sync::{Arc, Mutex};
-use axum::{
-    Router,
-    routing::{get, post},
-    extract::{Path, State, Form},
-    response::{Html, IntoResponse, Response, sse::{Event, KeepAlive, Sse}},
-    http::StatusCode,
-};
 use crate::{
     channel::ChannelContext,
     config::{AppConfig, WidgetConfig, WidgetType},
     protocol_control::{self, ProtocolControlError},
     widgets,
 };
-
+use axum::{
+    extract::{Form, Path, State},
+    http::StatusCode,
+    response::{
+        sse::{Event, KeepAlive, Sse},
+        Html, IntoResponse, Response,
+    },
+    routing::{get, post},
+    Router,
+};
+use std::sync::{Arc, Mutex};
 
 #[cfg(feature = "epics")]
 use crate::server_setup::setup_server_pvs;
 
 #[cfg(feature = "epics")]
-pub type EpicsStartHook = Arc<
-    dyn Fn(&AppState, &pvxs_sys::Server) -> Result<(), ProtocolControlError> + Send + Sync,
->;
+pub type EpicsStartHook =
+    Arc<dyn Fn(&AppState, &pvxs_sys::Server) -> Result<(), ProtocolControlError> + Send + Sync>;
 
 #[cfg(feature = "modbus")]
 pub type ModbusStartHook = Arc<
-    dyn Fn(&AppState) -> Result<Vec<tokio::task::JoinHandle<()>>, ProtocolControlError> + Send + Sync,
+    dyn Fn(&AppState) -> Result<Vec<tokio::task::JoinHandle<()>>, ProtocolControlError>
+        + Send
+        + Sync,
 >;
 
 // --- Application state -------------------------------------------------------
@@ -42,14 +45,14 @@ pub type ModbusStartHook = Arc<
 #[derive(Clone)]
 pub struct AppState {
     /// Loaded application configuration (all screens).
-    pub config:      Arc<AppConfig>,
+    pub config: Arc<AppConfig>,
     /// Channel context shared by all widget streams.
     pub channel_ctx: Arc<ChannelContext>,
     /// Optional loopback session token for rendering.
     pub loopback_token: Option<String>,
     /// Running PVXS server, if the EPICS feature is enabled.
     #[cfg(feature = "epics")]
-    pub pv_server:   Arc<Mutex<Option<pvxs_sys::Server>>>,
+    pub pv_server: Arc<Mutex<Option<pvxs_sys::Server>>>,
     /// Optional callback to attach app-specific EPICS simulator behavior after server start.
     #[cfg(feature = "epics")]
     pub epics_start_hook: Option<EpicsStartHook>,
@@ -65,17 +68,27 @@ impl AppState {
     /// Returns `true` when the EPICS PVA server is currently running.
     pub fn is_server_running(&self) -> bool {
         #[cfg(feature = "epics")]
-        { return self.pv_server.lock().unwrap().is_some(); }
+        {
+            return self.pv_server.lock().unwrap().is_some();
+        }
         #[allow(unreachable_code)]
         false
     }
 
     /// Returns `true` when at least one Modbus task is still alive.
     pub fn is_modbus_running(&self) -> bool {
-        self.modbus_task.lock().unwrap()
-            .as_ref()
-            .map(|v| v.iter().any(|h| !h.is_finished()))
-            .unwrap_or(false)
+        #[cfg(feature = "modbus")]
+        {
+            return self
+                .modbus_task
+                .lock()
+                .unwrap()
+                .as_ref()
+                .map(|v| v.iter().any(|h| !h.is_finished()))
+                .unwrap_or(false);
+        }
+        #[allow(unreachable_code)]
+        false
     }
 
     /// Build a [`Router`] containing all routes that the config-driven page and
@@ -93,12 +106,12 @@ impl AppState {
     /// before calling `.with_state(state)`.
     pub fn screen_routes(&self) -> Router<AppState> {
         Router::new()
-            .route("/",                              get(render_home))
-            .route("/screen/{screen_id}",            get(render_screen))
-            .route("/stream/screen/{screen_id}",     get(stream_screen_widgets))
-            .route("/stream/all",                    get(stream_all_widgets))
-            .route("/stream/widget/{widget_id}",     get(stream_widget))
-            .route("/api/widget/{widget_id}/set",    post(write_widget))
+            .route("/", get(render_home))
+            .route("/screen/{screen_id}", get(render_screen))
+            .route("/stream/screen/{screen_id}", get(stream_screen_widgets))
+            .route("/stream/all", get(stream_all_widgets))
+            .route("/stream/widget/{widget_id}", get(stream_widget))
+            .route("/api/widget/{widget_id}/set", post(write_widget))
     }
 }
 
@@ -124,7 +137,10 @@ pub async fn write_widget_markup(
     widget_id: &str,
     value: String,
 ) -> (StatusCode, maud::Markup) {
-    let widget = state.config.screens.iter()
+    let widget = state
+        .config
+        .screens
+        .iter()
         .flat_map(|s| widgets::collect_data_widgets(&s.widgets))
         .find(|w| w.id == widget_id);
 
@@ -138,7 +154,8 @@ pub async fn write_widget_markup(
         Some(w) => {
             let status = StatusCode::OK;
             // Write the value to the channel and get the updated widget HTML to return in the response.
-            let markup = widgets::write_channel(w.clone(), value.clone(), state.channel_ctx.clone()).await;
+            let markup =
+                widgets::write_channel(w.clone(), value.clone(), state.channel_ctx.clone()).await;
             maybe_schedule_toggle_reset(w, value, state.channel_ctx.clone());
             (status, markup)
         }
@@ -182,16 +199,12 @@ fn maybe_schedule_toggle_reset(
 async fn render_home(State(state): State<AppState>) -> Result<Html<String>, StatusCode> {
     let screen = match &state.config.home_screen {
         Some(id) => state.config.screens.iter().find(|s| &s.id == id),
-        None     => state.config.screens.first(),
-    }.ok_or(StatusCode::NOT_FOUND)?;
+        None => state.config.screens.first(),
+    }
+    .ok_or(StatusCode::NOT_FOUND)?;
     Ok(Html(
-        widgets::render_screen_with_options(
-            screen,
-            true,
-            None,
-            state.loopback_token.as_deref(),
-        )
-        .into_string(),
+        widgets::render_screen_with_options(screen, true, None, state.loopback_token.as_deref())
+            .into_string(),
     ))
 }
 
@@ -200,20 +213,18 @@ pub async fn render_screen(
     State(state): State<AppState>,
 ) -> Result<Html<String>, StatusCode> {
     tracing::info!("Rendering screen: {}", screen_id);
-    let screen = state.config.screens.iter()
+    let screen = state
+        .config
+        .screens
+        .iter()
         .find(|s| s.id == screen_id)
         .ok_or_else(|| {
             tracing::error!("Screen '{}' not found in AppConfig", screen_id);
             StatusCode::NOT_FOUND
         })?;
     Ok(Html(
-        widgets::render_screen_with_options(
-            screen,
-            true,
-            None,
-            state.loopback_token.as_deref(),
-        )
-        .into_string(),
+        widgets::render_screen_with_options(screen, true, None, state.loopback_token.as_deref())
+            .into_string(),
     ))
 }
 
@@ -227,31 +238,45 @@ pub async fn stop_server(State(state): State<AppState>) -> Response {
 #[cfg(feature = "epics")]
 async fn stop_server_impl(state: AppState) -> Response {
     match protocol_control::stop_epics_server(&state).await {
-        Ok(()) => Html(maud::html! {
-            div class="warning" hx-swap-oob="true" id="server-status" {
-                span { "EPICS Server Stopped" }
+        Ok(()) => Html(
+            maud::html! {
+                div class="warning" hx-swap-oob="true" id="server-status" {
+                    span { "EPICS Server Stopped" }
+                }
             }
-        }.into_string()).into_response(),
-        Err(ProtocolControlError::NotRunning(_)) => (StatusCode::BAD_REQUEST, Html(
-            maud::html! { div class="warning" { "EPICS Server is not running" } }.into_string()
-        )).into_response(),
+            .into_string(),
+        )
+        .into_response(),
+        Err(ProtocolControlError::NotRunning(_)) => (
+            StatusCode::BAD_REQUEST,
+            Html(
+                maud::html! { div class="warning" { "EPICS Server is not running" } }.into_string(),
+            ),
+        )
+            .into_response(),
         Err(ProtocolControlError::Operation(e)) => {
             tracing::error!("Failed to stop server: {}", e);
-            (StatusCode::BAD_REQUEST, Html(
-                maud::html! { div class="error" { "Error: " (e.to_string()) } }.into_string()
-            )).into_response()
+            (
+                StatusCode::BAD_REQUEST,
+                Html(maud::html! { div class="error" { "Error: " (e.to_string()) } }.into_string()),
+            )
+                .into_response()
         }
         Err(ProtocolControlError::Internal(e)) => {
             tracing::error!("Server stop task panicked: {}", e);
-            (StatusCode::INTERNAL_SERVER_ERROR, Html(
-                maud::html! { div class="error" { "Internal error" } }.into_string()
-            )).into_response()
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Html(maud::html! { div class="error" { "Internal error" } }.into_string()),
+            )
+                .into_response()
         }
         Err(e) => {
             tracing::error!("Failed to stop server: {}", e);
-            (StatusCode::INTERNAL_SERVER_ERROR, Html(
-                maud::html! { div class="error" { "Internal error" } }.into_string()
-            )).into_response()
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Html(maud::html! { div class="error" { "Internal error" } }.into_string()),
+            )
+                .into_response()
         }
     }
 }
@@ -263,11 +288,14 @@ async fn stop_server_impl(_state: AppState) -> Response {
 
 pub async fn server_status(State(state): State<AppState>) -> Html<String> {
     let is_running = state.is_server_running();
-    Html(maud::html! {
-        div id="server-status" class=(if is_running { "success" } else { "warning" }) {
-            span { @if is_running { "EPICS Server Running" } @else { "EPICS Server Stopped" } }
+    Html(
+        maud::html! {
+            div id="server-status" class=(if is_running { "success" } else { "warning" }) {
+                span { @if is_running { "EPICS Server Running" } @else { "EPICS Server Stopped" } }
+            }
         }
-    }.into_string())
+        .into_string(),
+    )
 }
 
 // --- Modbus control ----------------------------------------------------------
@@ -277,31 +305,42 @@ pub async fn stop_modbus(State(state): State<AppState>) -> Response {
     match protocol_control::stop_modbus_tasks(&state) {
         Ok(()) => {
             tracing::info!("Modbus TCP stopped");
-            Html(maud::html! {
-                div id="modbus-status" class="warning" hx-swap-oob="true" {
-                    span { "Modbus TCP Stopped" }
+            Html(
+                maud::html! {
+                    div id="modbus-status" class="warning" hx-swap-oob="true" {
+                        span { "Modbus TCP Stopped" }
+                    }
                 }
-            }.into_string()).into_response()
+                .into_string(),
+            )
+            .into_response()
         }
-        Err(ProtocolControlError::NotRunning(_)) => (StatusCode::BAD_REQUEST, Html(
-            maud::html! { div class="warning" { "Modbus TCP is not running" } }.into_string()
-        )).into_response(),
+        Err(ProtocolControlError::NotRunning(_)) => (
+            StatusCode::BAD_REQUEST,
+            Html(maud::html! { div class="warning" { "Modbus TCP is not running" } }.into_string()),
+        )
+            .into_response(),
         Err(e) => {
             tracing::error!("Failed to stop Modbus TCP: {}", e);
-            (StatusCode::INTERNAL_SERVER_ERROR, Html(
-                maud::html! { div class="error" { "Internal error" } }.into_string()
-            )).into_response()
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Html(maud::html! { div class="error" { "Internal error" } }.into_string()),
+            )
+                .into_response()
         }
     }
 }
 
 pub async fn modbus_status(State(state): State<AppState>) -> Html<String> {
     let is_running = state.is_modbus_running();
-    Html(maud::html! {
-        div id="modbus-status" class=(if is_running { "success" } else { "warning" }) {
-            span { @if is_running { "Modbus TCP Running" } @else { "Modbus TCP Stopped" } }
+    Html(
+        maud::html! {
+            div id="modbus-status" class=(if is_running { "success" } else { "warning" }) {
+                span { @if is_running { "Modbus TCP Running" } @else { "Modbus TCP Stopped" } }
+            }
         }
-    }.into_string())
+        .into_string(),
+    )
 }
 
 // --- SSE streams -------------------------------------------------------------
@@ -311,7 +350,10 @@ pub async fn stream_widget(
     State(state): State<AppState>,
 ) -> impl IntoResponse {
     tracing::info!("SSE stream requested for widget: {}", widget_id);
-    let data_widgets: Vec<_> = state.config.screens.iter()
+    let data_widgets: Vec<_> = state
+        .config
+        .screens
+        .iter()
         .flat_map(|s| widgets::collect_data_widgets(&s.widgets))
         .collect();
     let Some(config) = data_widgets.into_iter().find(|w| w.id == widget_id) else {
@@ -324,17 +366,25 @@ pub async fn stream_widget(
 
     let ctx = state.channel_ctx.clone();
     let stream: SseStream = match config.widget_type {
-        WidgetType::TextEntry    => Box::pin(widgets::text_entry::TextEntry::new(config).into_sse_stream(ctx)),
-        WidgetType::TextUpdate   => Box::pin(widgets::text_update::TextUpdate::new(config).into_sse_stream(ctx)),
-        WidgetType::Gauge        => Box::pin(widgets::gauge::Gauge::new(config).into_sse_stream(ctx)),
-        WidgetType::Led          => Box::pin(widgets::led::Led::new(config).into_sse_stream(ctx)),
-        WidgetType::Slider       => Box::pin(widgets::slider::Slider::new(config).into_sse_stream(ctx)),
-        WidgetType::Button       => Box::pin(widgets::button::Button::new(config).into_sse_stream(ctx)),
-        WidgetType::ToggleButton => Box::pin(widgets::toggle_button::ToggleButton::new(config).into_sse_stream(ctx)),
-        WidgetType::Chart        => Box::pin(widgets::chart::Chart::new(config).into_sse_stream(ctx)),
-        WidgetType::Select       => Box::pin(widgets::select::Select::new(config).into_sse_stream(ctx)),
-        WidgetType::MultiStateLed => Box::pin(widgets::multi_state_led::MultiStateLed::new(config).into_sse_stream(ctx)),
-        WidgetType::Group        => {
+        WidgetType::TextEntry => {
+            Box::pin(widgets::text_entry::TextEntry::new(config).into_sse_stream(ctx))
+        }
+        WidgetType::TextUpdate => {
+            Box::pin(widgets::text_update::TextUpdate::new(config).into_sse_stream(ctx))
+        }
+        WidgetType::Gauge => Box::pin(widgets::gauge::Gauge::new(config).into_sse_stream(ctx)),
+        WidgetType::Led => Box::pin(widgets::led::Led::new(config).into_sse_stream(ctx)),
+        WidgetType::Slider => Box::pin(widgets::slider::Slider::new(config).into_sse_stream(ctx)),
+        WidgetType::Button => Box::pin(widgets::button::Button::new(config).into_sse_stream(ctx)),
+        WidgetType::ToggleButton => {
+            Box::pin(widgets::toggle_button::ToggleButton::new(config).into_sse_stream(ctx))
+        }
+        WidgetType::Chart => Box::pin(widgets::chart::Chart::new(config).into_sse_stream(ctx)),
+        WidgetType::Select => Box::pin(widgets::select::Select::new(config).into_sse_stream(ctx)),
+        WidgetType::MultiStateLed => {
+            Box::pin(widgets::multi_state_led::MultiStateLed::new(config).into_sse_stream(ctx))
+        }
+        WidgetType::Group => {
             let stream: SseStream = Box::pin(async_stream::stream! {
                 yield Ok(Event::default().data("<!-- group widget has no stream -->"));
             });
@@ -347,14 +397,19 @@ pub async fn stream_widget(
 pub async fn stream_all_widgets(State(state): State<AppState>) -> impl IntoResponse {
     tracing::info!("Multiplexed SSE stream requested for all widgets");
     let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<(String, String)>();
-    let data_widgets: Vec<_> = state.config.screens.iter()
+    let data_widgets: Vec<_> = state
+        .config
+        .screens
+        .iter()
         .flat_map(|s| widgets::collect_data_widgets(&s.widgets))
         .collect();
     for config in data_widgets {
-        let tx        = tx.clone();
+        let tx = tx.clone();
         let widget_id = config.id.clone();
-        let ctx       = state.channel_ctx.clone();
-        tokio::spawn(widgets::run_widget_monitor_async(config, widget_id, ctx, tx));
+        let ctx = state.channel_ctx.clone();
+        tokio::spawn(widgets::run_widget_monitor_async(
+            config, widget_id, ctx, tx,
+        ));
     }
     drop(tx);
 
@@ -398,10 +453,15 @@ pub async fn stream_screen_widgets(
     let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<(String, String)>();
     let data_widgets = widgets::collect_data_widgets(&screen.widgets);
     for widget_config in data_widgets {
-        let tx        = tx.clone();
+        let tx = tx.clone();
         let widget_id = widget_config.id.clone();
-        let ctx       = state.channel_ctx.clone();
-        tokio::spawn(widgets::run_widget_monitor_async(widget_config, widget_id, ctx, tx));
+        let ctx = state.channel_ctx.clone();
+        tokio::spawn(widgets::run_widget_monitor_async(
+            widget_config,
+            widget_id,
+            ctx,
+            tx,
+        ));
     }
     drop(tx);
 
@@ -419,5 +479,3 @@ pub async fn stream_screen_widgets(
     });
     Sse::new(stream).keep_alive(KeepAlive::default())
 }
-
-
