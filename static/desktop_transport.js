@@ -13,7 +13,14 @@
     }
 
     function isIpcTransport() {
-        return typeof window.ipc !== 'undefined' && typeof window.ipc.postMessage === 'function';
+        // Use the server-injected token as the authoritative signal for IPC mode.
+        // window.MYCELA_IPC_TOKEN is only written into the HTML when the server knows
+        // the page is being served through the wry IPC bridge.  Detecting window.ipc
+        // instead is unreliable: wry injects window.ipc into every WebView it creates,
+        // including loopback ones, so that check always returns true in any wry window
+        // and silently routes all action-button clicks through ipcRequest() even when
+        // no IPC backend is running.
+        return typeof window.MYCELA_IPC_TOKEN === 'string';
     }
 
     function mapPathToCommand(method, path) {
