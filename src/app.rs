@@ -162,6 +162,17 @@ pub async fn write_widget_markup(
     }
 }
 
+/// Schedule a delayed write of `reset_default` for toggle-button widgets that
+/// have `reset_timeout` configured.
+///
+/// This is a belt-and-suspenders mechanism for the **non-SSE path** (plain HTTP
+/// or IPC writes with no active SSE subscription).  When an SSE subscription IS
+/// active, `ToggleButton::run_monitor_async` handles the reset write itself when
+/// its countdown timer expires, making the two paths independent.  The
+/// double-write that occurs when both are active is idempotent.
+///
+/// The spawned task is intentionally fire-and-forget for now; it will complete
+/// or fail gracefully even if the server is stopped before the timer fires.
 fn maybe_schedule_toggle_reset(
     widget: WidgetConfig,
     clicked_value: String,
@@ -396,7 +407,7 @@ pub async fn stream_widget(
 
 pub async fn stream_all_widgets(State(state): State<AppState>) -> impl IntoResponse {
     tracing::info!("Multiplexed SSE stream requested for all widgets");
-    let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<(String, String)>();
+    let (tx, mut rx) = tokio::sync::mpsc::channel::<(String, String)>(64);
     let data_widgets: Vec<_> = state
         .config
         .screens
@@ -450,7 +461,7 @@ pub async fn stream_screen_widgets(
         }
     }
 
-    let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<(String, String)>();
+    let (tx, mut rx) = tokio::sync::mpsc::channel::<(String, String)>(64);
     let data_widgets = widgets::collect_data_widgets(&screen.widgets);
     for widget_config in data_widgets {
         let tx = tx.clone();

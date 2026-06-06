@@ -1,8 +1,8 @@
-use maud::{html, Markup};
-use std::sync::Arc;
-use futures::StreamExt;
 use crate::channel::{ChannelContext, ChannelEvent, ChannelValue};
 use crate::config::WidgetConfig;
+use futures::StreamExt;
+use maud::{html, Markup};
+use std::sync::Arc;
 
 pub struct Gauge {
     config: WidgetConfig,
@@ -43,12 +43,15 @@ impl Gauge {
         let mut stream = crate::channel::channel_stream(config.clone(), ctx);
         while let Some(event) = stream.next().await {
             let html = match event {
-                ChannelEvent::Value(cv)          => render_inner_connected(&config, &cv).into_string(),
-                ChannelEvent::Disconnected(_)
-                | ChannelEvent::Error(_)         => render_inner_disconnected(&config).into_string(),
-                ChannelEvent::Connected          => continue,
+                ChannelEvent::Value(cv) => render_inner_connected(&config, &cv).into_string(),
+                ChannelEvent::Disconnected(_) | ChannelEvent::Error(_) => {
+                    render_inner_disconnected(&config).into_string()
+                }
+                ChannelEvent::Connected => continue,
             };
-            if tx.send(html).is_err() { break; }
+            if tx.send(html).is_err() {
+                break;
+            }
         }
     }
 }
@@ -73,21 +76,62 @@ pub fn render_inner_connected(config: &WidgetConfig, cv: &ChannelValue) -> Marku
         cv.display_high
     };
     let percentage = ((cv.raw_value - min) / (max - min) * 100.0).clamp(0.0, 100.0);
-    let range  = max - min;
+    let range = max - min;
     let to_pct = |v: f64| ((v - min) / range * 100.0).clamp(0.0, 100.0);
-    let low_alarm  = if cv.low_alarm_limit  != 0.0 { Some((cv.low_alarm_limit,  to_pct(cv.low_alarm_limit)))  } else { None };
-    let low_warn   = if cv.low_warn_limit   != 0.0 { Some((cv.low_warn_limit,   to_pct(cv.low_warn_limit)))   } else { None };
-    let high_warn  = if cv.high_warn_limit  != 100.0 { Some((cv.high_warn_limit, to_pct(cv.high_warn_limit))) } else { None };
-    let high_alarm = if cv.high_alarm_limit != 100.0 { Some((cv.high_alarm_limit, to_pct(cv.high_alarm_limit))) } else { None };
+    let low_alarm = if cv.low_alarm_limit != 0.0 {
+        Some((cv.low_alarm_limit, to_pct(cv.low_alarm_limit)))
+    } else {
+        None
+    };
+    let low_warn = if cv.low_warn_limit != 0.0 {
+        Some((cv.low_warn_limit, to_pct(cv.low_warn_limit)))
+    } else {
+        None
+    };
+    let high_warn = if cv.high_warn_limit != 100.0 {
+        Some((cv.high_warn_limit, to_pct(cv.high_warn_limit)))
+    } else {
+        None
+    };
+    let high_alarm = if cv.high_alarm_limit != 100.0 {
+        Some((cv.high_alarm_limit, to_pct(cv.high_alarm_limit)))
+    } else {
+        None
+    };
     let tooltip = super::build_tooltip(config, cv);
-    render_gauge_html(config, &display_value, &cv.units, min, max, percentage,
-                      &format!("gauge {}", alarm_class), icon,
-                      low_alarm, low_warn, high_warn, high_alarm, &tooltip)
+    render_gauge_html(
+        config,
+        &display_value,
+        &cv.units,
+        min,
+        max,
+        percentage,
+        &format!("gauge {}", alarm_class),
+        icon,
+        low_alarm,
+        low_warn,
+        high_warn,
+        high_alarm,
+        &tooltip,
+    )
 }
 
 pub fn render_inner_disconnected(config: &WidgetConfig) -> Markup {
-    render_gauge_html(config, "--", "", 0.0, 100.0, 0.0, "gauge alarm-disconnected", Some(super::OFFLINE_SVG),
-                      None, None, None, None, "")
+    render_gauge_html(
+        config,
+        "--",
+        "",
+        0.0,
+        100.0,
+        0.0,
+        "gauge alarm-disconnected",
+        Some(super::OFFLINE_SVG),
+        None,
+        None,
+        None,
+        None,
+        "",
+    )
 }
 
 fn render_gauge_html(
@@ -97,23 +141,27 @@ fn render_gauge_html(
     min: f64,
     max: f64,
     percentage: f64,
-    _alarm_class: &str,
+    _alarm_class: &str, // reserved for future CSS alarm colouring; alarm state is shown via icon
     icon: Option<&str>,
-    low_alarm:  Option<(f64, f64)>,
-    low_warn:   Option<(f64, f64)>,
-    high_warn:  Option<(f64, f64)>,
+    low_alarm: Option<(f64, f64)>,
+    low_warn: Option<(f64, f64)>,
+    high_warn: Option<(f64, f64)>,
     high_alarm: Option<(f64, f64)>,
     tooltip: &str,
 ) -> Markup {
-    let has_alarm_labels = low_alarm.is_some() || low_warn.is_some()
-        || high_warn.is_some() || high_alarm.is_some();
+    let has_alarm_labels =
+        low_alarm.is_some() || low_warn.is_some() || high_warn.is_some() || high_alarm.is_some();
     let vertical = config.orientation.as_deref() == Some("vertical");
     let fill_style = if vertical {
         format!("height: {:.1}%", percentage)
     } else {
         format!("width: {:.1}%", percentage)
     };
-    let display_class = if vertical { "gauge-display gauge-vertical" } else { "gauge-display" };
+    let display_class = if vertical {
+        "gauge-display gauge-vertical"
+    } else {
+        "gauge-display"
+    };
 
     // Graduated axis: 5 evenly-spaced ticks from min to max
     let tick_count = 5;

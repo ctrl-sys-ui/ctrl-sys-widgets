@@ -517,10 +517,15 @@ pub fn build_channel_value(
         _ => format!("{:.prec$}", physical, prec = precision as usize),
     };
 
-    // Display / control range: prefer config metadata, then derive from register range
+    // Display / control range: prefer config metadata, then derive from register range.
+    // When scale is negative (inverted sensor), raw_range_high is less than offset, so
+    // take min/max to always keep display_low <= display_high.
+    let raw_range_low = m.offset;
     let raw_range_high = 65535.0 * m.scale + m.offset;
-    let display_low = meta_display.map(|d| d.limit_low).unwrap_or(m.offset);
-    let display_high = meta_display.map(|d| d.limit_high).unwrap_or(raw_range_high);
+    let derived_low = raw_range_low.min(raw_range_high);
+    let derived_high = raw_range_low.max(raw_range_high);
+    let display_low = meta_display.map(|d| d.limit_low).unwrap_or(derived_low);
+    let display_high = meta_display.map(|d| d.limit_high).unwrap_or(derived_high);
     let control_low = meta_control.map(|c| c.limit_low).unwrap_or(display_low);
     let control_high = meta_control.map(|c| c.limit_high).unwrap_or(display_high);
 
@@ -557,7 +562,6 @@ pub fn build_channel_value(
     }
 }
 
-/// Write a physical value back to a Modbus register, reversing the scale/offset.
 /// Write a physical value back to a Modbus register, reversing the scale/offset.
 pub async fn modbus_write(
     m: &ModbusTCPConfig,

@@ -1,4 +1,3 @@
-use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
 // ─── Unified value type ───────────────────────────────────────────────────────
@@ -17,7 +16,7 @@ pub struct ChannelValue {
     /// Sample array for single-series chart widgets
     pub array_values: Vec<f64>,
     /// Sample arrays for multi-series line charts
-    pub named_series: HashMap<String, Vec<f64>>,
+    pub named_series: Vec<(String, Vec<f64>)>,
     /// Alarm severity  (0 = NO_ALARM, 1 = MINOR, 2 = MAJOR, 3 = INVALID)
     pub alarm_severity: i32,
     /// Alarm status code (protocol-specific; 0 = no alarm)
@@ -53,7 +52,7 @@ impl Default for ChannelValue {
             raw_value: 0.0,
             value_str: String::new(),
             array_values: Vec::new(),
-            named_series: HashMap::new(),
+            named_series: Vec::new(),
             alarm_severity: 0,
             alarm_status: 0,
             units: String::new(),
@@ -116,7 +115,10 @@ impl ChannelContext {
         epics_ctx: Arc<Mutex<pvxs_sys::Context>>,
         modbus_pool: Arc<crate::modbus_client::ModbusPool>,
     ) -> Arc<Self> {
-        Arc::new(Self { epics_ctx, modbus_pool })
+        Arc::new(Self {
+            epics_ctx,
+            modbus_pool,
+        })
     }
 
     #[cfg(all(feature = "epics", not(feature = "modbus")))]
@@ -148,13 +150,22 @@ pub fn channel_stream(
     use crate::config::ProtocolConfig;
 
     #[cfg(feature = "epics")]
-    if matches!(config.protocol.as_ref(), Some(ProtocolConfig::EpicsPva(_)) | None) {
-        return Box::pin(crate::epics_channel::epics_stream(config, ctx.epics_ctx.clone()));
+    if matches!(
+        config.protocol.as_ref(),
+        Some(ProtocolConfig::EpicsPva(_)) | None
+    ) {
+        return Box::pin(crate::epics_channel::epics_stream(
+            config,
+            ctx.epics_ctx.clone(),
+        ));
     }
 
     #[cfg(feature = "modbus")]
     if let Some(ProtocolConfig::ModbusTcp(_)) = config.protocol.as_ref() {
-        return Box::pin(crate::modbus_client::modbus_stream(config, ctx.modbus_pool.clone()));
+        return Box::pin(crate::modbus_client::modbus_stream(
+            config,
+            ctx.modbus_pool.clone(),
+        ));
     }
 
     // No protocol configured or no matching feature enabled.

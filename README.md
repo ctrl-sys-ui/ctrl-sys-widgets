@@ -2,17 +2,7 @@
 
 *Named from mycelium — the vast, silent network that binds an ecosystem together.*
 
-mycela grows where your devices live. Like the hyphal threads that connect every root in a forest, it weaves EPICS, Modbus, and future protocols into a single, coherent control fabric. No protocol is a second-class citizen. Built in Rust — because speed and memory safety are not optional in systems that matter.
-
-## Architecture
-
-```
-Browser (HTMX, self-hosted)
-    ↓ HTML over HTTP / SSE
-Axum Server (Rust)
-    ├─ pvxs-sys (EPICS PVAccess)  [feature: epics]
-    └─ tokio-modbus (Modbus TCP)  [feature: modbus]
-```
+Mycela is a Rust framework for distributed control system UIs, combining an Axum web server, multiple industrical SCADA protocols (EPICS, Modbus TCP, etc.) behind an SSE/HTMX front-end with an optional desktop WebView shell. Built in Rust — because speed and memory safety are not optional in systems that matter.
 
 ### Key Benefits
 

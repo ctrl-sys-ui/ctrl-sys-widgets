@@ -10,6 +10,9 @@ pub enum ConfigError {
         source: serde_json::Error,
         context: String,
     },
+    /// A semantic validation rule failed (e.g. duplicate IDs, out-of-range values).
+    /// The message contains a human-readable description of the problem.
+    ValidationError(String),
 }
 
 impl fmt::Display for ConfigError {
@@ -18,6 +21,9 @@ impl fmt::Display for ConfigError {
             ConfigError::FileError(e) => write!(f, "Failed to read config file: {}", e),
             ConfigError::JsonError { source, context } => {
                 write!(f, "Configuration JSON error: {}\n{}", source, context)
+            }
+            ConfigError::ValidationError(msg) => {
+                write!(f, "Configuration validation error: {}", msg)
             }
         }
     }
@@ -150,47 +156,32 @@ impl AppConfig {
                 "loopback" | "http" | "localhost" | "ipc" | "bridge"
             );
             if !is_valid {
-                let context = format!(
+                return Err(ConfigError::ValidationError(format!(
                     "Invalid startup.desktop.transport value: '{}'\n\
                      Expected one of: loopback, http, localhost, ipc, bridge.",
                     transport
-                );
-                let err = serde_json::from_str::<()>("\"invalid_transport\"").unwrap_err();
-                return Err(ConfigError::JsonError {
-                    source: err,
-                    context,
-                });
+                )));
             }
         }
 
         let window = &config.startup.desktop.window;
         if let Some(width) = window.width {
             if !width.is_finite() || width <= 0.0 {
-                let context = format!(
+                return Err(ConfigError::ValidationError(format!(
                     "Invalid startup.desktop.window.width value: {}\n\
                      Width must be a positive finite number.",
                     width
-                );
-                let err = serde_json::from_str::<()>("\"invalid_window_width\"").unwrap_err();
-                return Err(ConfigError::JsonError {
-                    source: err,
-                    context,
-                });
+                )));
             }
         }
 
         if let Some(height) = window.height {
             if !height.is_finite() || height <= 0.0 {
-                let context = format!(
+                return Err(ConfigError::ValidationError(format!(
                     "Invalid startup.desktop.window.height value: {}\n\
                      Height must be a positive finite number.",
                     height
-                );
-                let err = serde_json::from_str::<()>("\"invalid_window_height\"").unwrap_err();
-                return Err(ConfigError::JsonError {
-                    source: err,
-                    context,
-                });
+                )));
             }
         }
 
@@ -198,15 +189,10 @@ impl AppConfig {
         let mut seen_widget_ids = std::collections::HashSet::new();
         for screen in &config.screens {
             if !seen_screen_ids.insert(screen.id.clone()) {
-                let context = format!(
+                return Err(ConfigError::ValidationError(format!(
                     "Duplicate screen ID: '{}'\nEach screen must have a unique 'id'.",
                     screen.id
-                );
-                let err = serde_json::from_str::<()>("\"duplicate_screen_id\"").unwrap_err();
-                return Err(ConfigError::JsonError {
-                    source: err,
-                    context,
-                });
+                )));
             }
             ScreenConfig::validate_widgets(&screen.widgets, &mut seen_widget_ids)?;
         }
@@ -219,6 +205,9 @@ impl AppConfig {
 pub struct ScreenConfig {
     pub id: String,
     pub title: String,
+    /// Human-readable description of the screen.
+    /// This field may be omitted in JSON; it defaults to an empty string.
+    #[serde(default)]
     pub description: String,
     /// Navigation / action buttons shown in the screen header.
     #[serde(default)]
@@ -258,14 +247,17 @@ pub struct EpicsPvaConfig {
     /// Optional embedded PVXS server PV definition (creates the PV on start-up)
     #[serde(default)]
     pub server: Option<ServerConfig>,
-    /// Extra PV names for multi-series line charts (max 5 additional, 6 total)
+    /// Extra PV names for multi-series line charts.
+    /// Maximum 5 additional PVs are accepted (6 total including the primary `pv_name`);
+    /// any further entries are silently ignored.
     #[serde(default)]
     pub pv_names: Option<Vec<String>>,
 }
 
 #[cfg(feature = "epics")]
 impl EpicsPvaConfig {
-    /// All PV names for this widget (primary + up to 5 extra series for charts).
+    /// All PV names for this widget — primary first, then up to 5 extra series.
+    /// The 6-series cap matches the server-side limit enforced in `setup_server_pvs`.
     pub fn series_pvs(&self) -> Vec<String> {
         let mut pvs = vec![self.pv_name.clone()];
         if let Some(extras) = &self.pv_names {
@@ -634,17 +626,12 @@ impl ScreenConfig {
     ) -> Result<(), ConfigError> {
         for (idx, widget) in widgets.iter().enumerate() {
             if !seen_ids.insert(widget.id.clone()) {
-                let context = format!(
+                return Err(ConfigError::ValidationError(format!(
                     "Widget #{} has duplicate ID: '{}'\n\
                      Each widget must have a unique 'id' field.",
                     idx + 1,
                     widget.id
-                );
-                let err = serde_json::from_str::<()>("\"duplicate_id\"").unwrap_err();
-                return Err(ConfigError::JsonError {
-                    source: err,
-                    context,
-                });
+                )));
             }
             if let Some(children) = &widget.children {
                 Self::validate_widgets(children, seen_ids)?;
@@ -693,7 +680,7 @@ impl ScreenConfig {
             }
         } else if error_msg.contains("unknown variant") || error_msg.contains("unknown field") {
             context.push_str("💡 Hint: Check for typos in field names or enum values.\n");
-            context.push_str("   Valid widget types: text_entry, text_update, gauge, led, button, slider, chart, select, toggle_button, group\n");
+            context.push_str("   Valid widget types: text_entry, text_update, gauge, led, button, slider, chart, select, toggle_button, group, multi_state_led\n");
         } else if error_msg.contains("invalid type") {
             context.push_str("💡 Hint: Check that the field has the correct data type (string, number, boolean, etc.)\n");
         }
