@@ -422,32 +422,87 @@ fn run_loopback_desktop(
     let entry_path = normalized_initial_path(&hooks.initial_path);
     let url = format!("http://127.0.0.1:{}{}", port, entry_path);
 
-    let event_loop = EventLoop::new();
+    // Use a user-event loop so the new-window handler can post OpenWindow
+    // events back to the main thread.  Child pages are opened as native wry
+    // windows inside the same process, so they are automatically destroyed
+    // when the parent window closes and ControlFlow::Exit is set.
+    let event_loop = EventLoopBuilder::<DesktopUserEvent>::with_user_event().build();
+    let proxy = event_loop.create_proxy();
+
+    let window_title = window.title.clone();
+    let window_width = window.width;
+    let window_height = window.height;
+
     let window = WindowBuilder::new()
         .with_title(window.title)
         .with_inner_size(LogicalSize::new(window.width, window.height))
         .build(&event_loop)
         .expect("failed to create window");
+    let main_window_id = window.id();
 
+    let proxy_for_new_window = proxy.clone();
     let webview = WebViewBuilder::new()
         .with_url(&url)
-        .with_new_window_req_handler(|url, _features| {
+        .with_new_window_req_handler(move |url, _features| {
             tracing::info!("Desktop new window request: {}", url);
-            wry::NewWindowResponse::Allow
+            let _ = proxy_for_new_window.send_event(DesktopUserEvent::OpenWindow(url));
+            wry::NewWindowResponse::Deny
         })
         .build(&window)
         .expect("failed to create webview");
 
-    event_loop.run(move |event, _, control_flow| {
+    let mut child_windows: Vec<tao::window::Window> = Vec::new();
+    let mut child_webviews: Vec<wry::WebView> = Vec::new();
+
+    event_loop.run(move |event, event_loop_window_target, control_flow| {
         *control_flow = ControlFlow::Wait;
         let _ = &webview;
 
-        if let Event::WindowEvent {
-            event: WindowEvent::CloseRequested,
-            ..
-        } = event
-        {
-            *control_flow = ControlFlow::Exit;
+        match event {
+            Event::WindowEvent {
+                event: WindowEvent::CloseRequested,
+                window_id,
+                ..
+            } => {
+                if window_id == main_window_id {
+                    *control_flow = ControlFlow::Exit;
+                } else if let Some(index) = child_windows.iter().position(|w| w.id() == window_id) {
+                    child_webviews.remove(index);
+                    child_windows.remove(index);
+                }
+            }
+            Event::UserEvent(DesktopUserEvent::OpenWindow(url)) => {
+                let child_window = match WindowBuilder::new()
+                    .with_title(window_title.clone())
+                    .with_inner_size(LogicalSize::new(window_width, window_height))
+                    .build(event_loop_window_target)
+                {
+                    Ok(w) => w,
+                    Err(error) => {
+                        tracing::error!("Failed to create child window: {}", error);
+                        return;
+                    }
+                };
+                let child_proxy = proxy.clone();
+                let child_webview = match WebViewBuilder::new()
+                    .with_url(&url)
+                    .with_new_window_req_handler(move |next_url, _features| {
+                        tracing::info!("Desktop new window request: {}", next_url);
+                        let _ = child_proxy.send_event(DesktopUserEvent::OpenWindow(next_url));
+                        wry::NewWindowResponse::Deny
+                    })
+                    .build(&child_window)
+                {
+                    Ok(w) => w,
+                    Err(error) => {
+                        tracing::error!("Failed to create child webview: {}", error);
+                        return;
+                    }
+                };
+                child_windows.push(child_window);
+                child_webviews.push(child_webview);
+            }
+            _ => {}
         }
     });
 }
