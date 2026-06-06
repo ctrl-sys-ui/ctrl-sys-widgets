@@ -480,8 +480,6 @@ impl WidgetConfig {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ServerConfig {
     /// Alarm severity for this PV's initial state. Accepted values: `NONE`, `MINOR`, `MAJOR`, `INVALID`.
-    /// Both `alarm_severity` (correct spelling) and the legacy `alarm_serverity` (typo) are accepted.
-    #[serde(default, alias = "alarm_serverity")]
     pub alarm_severity: Option<String>,
     #[serde(default)]
     pub alarm_status: Option<String>,
