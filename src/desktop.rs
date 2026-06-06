@@ -30,6 +30,11 @@ enum DesktopUserEvent {
     IpcMessage(String),
     IpcEvent(IpcEvent),
     OpenWindow(String),
+    /// Backend response ready to be forwarded to the webview(s).
+    ///
+    /// A dispatch thread waits for the backend off the event-loop thread and
+    /// delivers the finished response here so the event loop is never blocked.
+    IpcReply(IpcResponse),
 }
 
 struct BackendRequest {
@@ -542,14 +547,27 @@ fn run_ipc_desktop(config: AppConfig, window: DesktopWindowSettings, hooks: Desk
                     return;
                 }
 
-                let response = match response_rx.recv() {
-                    Ok(response) => response,
-                    Err(error) => {
-                        tracing::error!("Failed to receive IPC response from backend: {}", error);
-                        return;
+                // Offload the blocking wait to a dedicated thread so the event
+                // loop stays responsive during long operations (EPICS writes
+                // have a 5 s timeout; Modbus reconnects take up to 2 s).
+                // The finished response comes back as IpcReply and is delivered
+                // to the webview(s) there — preserving the existing JS contract.
+                let proxy_reply = proxy.clone();
+                std::thread::spawn(move || match response_rx.recv() {
+                    Ok(response) => {
+                        if proxy_reply
+                            .send_event(DesktopUserEvent::IpcReply(response))
+                            .is_err()
+                        {
+                            tracing::warn!("IPC reply dropped: event loop already closed");
+                        }
                     }
-                };
-
+                    Err(_) => {
+                        tracing::error!("Backend closed response channel without sending a reply");
+                    }
+                });
+            }
+            Event::UserEvent(DesktopUserEvent::IpcReply(response)) => {
                 let response_json = match serde_json::to_string(&response) {
                     Ok(json) => json,
                     Err(error) => {
