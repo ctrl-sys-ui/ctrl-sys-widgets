@@ -65,14 +65,23 @@ where
 
             Request::WriteMultipleRegisters(addr, data) => {
                 let count = data.len() as u16;
+                // Validate all registers via on_write and compute addresses.
+                // on_write is treated as a pure validator — no bank changes yet.
+                // This ensures that a rejection on any register leaves the bank untouched.
+                let mut validated: Vec<(u16, u16)> = Vec::with_capacity(data.len());
                 for (i, &val) in data.iter().enumerate() {
-                    let reg = addr + i as u16;
+                    let reg = match addr.checked_add(i as u16) {
+                        Some(r) => r,
+                        None => return future::ready(Err(ExceptionCode::IllegalDataAddress)),
+                    };
                     match (self.on_write)(reg, val) {
-                        Ok(()) => {
-                            self.bank.insert(reg, val);
-                        }
+                        Ok(()) => validated.push((reg, val)),
                         Err(e) => return future::ready(Err(e)),
                     }
+                }
+                // All on_write calls succeeded — commit to bank atomically.
+                for (reg, val) in validated {
+                    self.bank.insert(reg, val);
                 }
                 Ok(Response::WriteMultipleRegisters(addr, count))
             }
@@ -93,11 +102,7 @@ where
 ///
 /// The server runs in a background tokio task.  The returned [`JoinHandle`]
 /// can be used to await or abort the server.
-pub fn start_modbus_server<F>(
-    addr: SocketAddr,
-    bank: RegisterBank,
-    on_write: F,
-) -> JoinHandle<()>
+pub fn start_modbus_server<F>(addr: SocketAddr, bank: RegisterBank, on_write: F) -> JoinHandle<()>
 where
     F: Fn(u16, u16) -> Result<(), ExceptionCode> + Send + Sync + 'static,
 {
@@ -119,7 +124,10 @@ where
             let bank = bank.clone();
             let on_write = on_write.clone();
             std::future::ready(accept_tcp_connection(stream, peer, move |_peer_addr| {
-                Ok(Some(BankService { bank: bank.clone(), on_write: on_write.clone() }))
+                Ok(Some(BankService {
+                    bank: bank.clone(),
+                    on_write: on_write.clone(),
+                }))
             }))
         };
 
