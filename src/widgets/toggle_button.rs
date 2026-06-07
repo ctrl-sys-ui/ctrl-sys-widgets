@@ -233,7 +233,7 @@ impl ToggleButton {
                             let config_write = config.clone();
                             let ctx_write = ctx.clone();
                             tokio::spawn(async move {
-                                tracing::debug!(
+                                tracing::info!(
                                     "[{}] toggle countdown expired — writing reset_default={}",
                                     config_write.id,
                                     reset_value

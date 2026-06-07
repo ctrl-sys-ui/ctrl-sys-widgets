@@ -197,7 +197,7 @@ fn maybe_schedule_toggle_reset(
     tokio::spawn(async move {
         tokio::time::sleep(std::time::Duration::from_millis(timeout_ms)).await;
         let result = widgets::write_channel(widget, reset_value, channel_ctx).await;
-        tracing::debug!(
+        tracing::info!(
             "[{}] toggle reset_timeout elapsed; reset_default write result html: {}",
             widget_id,
             result.into_string()

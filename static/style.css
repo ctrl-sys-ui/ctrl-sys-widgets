@@ -969,8 +969,8 @@ input[type="number"] {
 }
 .widget-toggle-btn-countdown {
     position: absolute;
-    bottom: 4px;
-    right: 4px;
+    bottom: 2px;
+    right: 2px;
     font-size: 0.7rem;
     pointer-events: none;                      /* don't interfere with button clicks */
     user-select: none;
