@@ -2,23 +2,22 @@
 
 *Named from mycelium — the vast, silent network that binds an ecosystem together.*
 
-Mycela is a Rust framework for distributed control system UIs, combining an Axum web server, multiple industrical SCADA protocols (EPICS, Modbus TCP, etc.) behind an SSE/HTMX front-end with an optional desktop WebView shell. Built in Rust — because speed and memory safety are not optional in systems that matter.
+Mycela is a Rust framework for distributed control system UIs, combining an Axum web server, multiple industrial SCADA protocols (EPICS, Modbus TCP, etc.) behind an SSE/HTMX front-end with an optional desktop WebView shell. Built in Rust — because speed and memory safety are not optional in systems that matter.
 
 ### Key Benefits
 
-- **Simple & Fast** — No JavaScript frameworks; HTMX + SSE for real-time updates
+- **Simple & Fast** — HTMX + SSE for real-time updates
 - **Multi-protocol** — EPICS PVAccess and Modbus TCP supported out of the box
 - **Alarm aware** — Full alarm severity display (MAJOR / MINOR / INVALID / OFFLINE)
-- **Airgap ready** — All assets (HTMX, fonts, CSS) are self-hosted
-- **Library-first** — Import `mycela` as a crate and build your own server
+- **Airgap ready** — All assets (HTMX, fonts, CSS) are embedded in the executable.
 
 ## Quick Start
 
 ### Prerequisites
 
 - Rust 1.75+ (`rustup update`)
-- For EPICS: `pvxs-sys` library built alongside this crate (`../pvxs-sys`)
-- For Modbus: no extra system dependencies
+- For EPICS: `pvxs-sys`
+- For Modbus: `tokio-modbus`
 
 ### Demo Server (browser-based)
 
@@ -44,7 +43,7 @@ window opens automatically — no browser needed.
 cargo run --example demo_desktop --features desktop
 ```
 
-Axum binds to a random port on `127.0.0.1`; the WebView window opens pointed at
+In `loopback` mode, Axum binds to a random port on `127.0.0.1`; the WebView window opens pointed at
 that URL. Logs are written to `logs/mycela.log.<date>` alongside the binary.
 
 ### Desktop IPC mode (no localhost listener)
@@ -219,12 +218,13 @@ Screen layout is defined in a JSON file (`examples/demo_config.json`):
 | Maud (HTML templating) | 0.27.0 |
 | Tokio | 1.52 |
 | tokio-modbus | 0.17 |
-| pvxs-sys | local path |
+| pvxs-sys | 0.1.2 |
 | DashMap | 6 |
 | plotters (SVG) | 0.3 |
 | tracing-appender | 0.2 |
 | wry (desktop) | 0.55 |
 | winit (desktop) | 0.30 |
+| tao(desktop) | |
 
 ## Development
 
