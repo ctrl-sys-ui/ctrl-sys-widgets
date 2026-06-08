@@ -1,4 +1,6 @@
 use std::sync::Arc;
+use dashmap::DashMap;
+use tokio::sync::watch;
 
 // ─── Unified value type ───────────────────────────────────────────────────────
 
@@ -108,9 +110,58 @@ pub struct ChannelContext {
     pub epics_ctx: Arc<std::sync::Mutex<pvxs_sys::Context>>,
     #[cfg(feature = "modbus")]
     pub modbus_pool: Arc<crate::modbus_client::ModbusPool>,
+    /// Per-widget enabled/disabled state bus. `true` = enabled (default).
+    pub widget_enabled: DashMap<String, watch::Sender<bool>>,
+    /// Per-widget latest-value bus, for app-logic subscriptions.
+    pub widget_value_bus: DashMap<String, watch::Sender<ChannelValue>>,
 }
 
 impl ChannelContext {
+    /// Enable or disable a widget by ID.
+    ///
+    /// The change propagates to any running widget monitor via a watch channel,
+    /// triggering an immediate re-render without waiting for the next data poll.
+    pub fn set_widget_enabled(&self, widget_id: &str, enabled: bool) {
+        match self.widget_enabled.get(widget_id) {
+            Some(tx) => { tx.send_replace(enabled); }
+            None => {
+                let (tx, _rx) = watch::channel(enabled);
+                self.widget_enabled.insert(widget_id.to_string(), tx);
+            }
+        }
+    }
+
+    /// Subscribe to the enabled state of a widget. Returns `true` by default
+    /// if no explicit state has been set yet.
+    pub fn subscribe_widget_enabled(&self, widget_id: &str) -> watch::Receiver<bool> {
+        self.widget_enabled
+            .entry(widget_id.to_string())
+            .or_insert_with(|| watch::channel(true).0)
+            .subscribe()
+    }
+
+    /// Publish the latest channel value for a widget onto the value bus.
+    /// Widget monitors call this so app logic can react to value changes.
+    pub fn publish_widget_value(&self, widget_id: &str, cv: ChannelValue) {
+        match self.widget_value_bus.get(widget_id) {
+            Some(tx) => { tx.send_replace(cv); }
+            None => {
+                let (tx, _rx) = watch::channel(cv);
+                self.widget_value_bus.insert(widget_id.to_string(), tx);
+            }
+        }
+    }
+
+    /// Subscribe to the latest channel value stream for a widget.
+    /// Useful for app-level logic that reacts to live data (e.g. enable/disable
+    /// controls based on sensor readings).
+    pub fn subscribe_widget_value(&self, widget_id: &str) -> watch::Receiver<ChannelValue> {
+        self.widget_value_bus
+            .entry(widget_id.to_string())
+            .or_insert_with(|| watch::channel(ChannelValue::default()).0)
+            .subscribe()
+    }
+
     #[cfg(all(feature = "epics", feature = "modbus"))]
     pub fn new(
         epics_ctx: Arc<std::sync::Mutex<pvxs_sys::Context>>,
@@ -120,6 +171,8 @@ impl ChannelContext {
             local_store: crate::local_channel::LocalStore::new(),
             epics_ctx,
             modbus_pool,
+            widget_enabled: DashMap::new(),
+            widget_value_bus: DashMap::new(),
         })
     }
 
@@ -128,6 +181,8 @@ impl ChannelContext {
         Arc::new(Self {
             local_store: crate::local_channel::LocalStore::new(),
             epics_ctx,
+            widget_enabled: DashMap::new(),
+            widget_value_bus: DashMap::new(),
         })
     }
 
@@ -136,6 +191,8 @@ impl ChannelContext {
         Arc::new(Self {
             local_store: crate::local_channel::LocalStore::new(),
             modbus_pool,
+            widget_enabled: DashMap::new(),
+            widget_value_bus: DashMap::new(),
         })
     }
 
@@ -143,6 +200,8 @@ impl ChannelContext {
     pub fn new() -> Arc<Self> {
         Arc::new(Self {
             local_store: crate::local_channel::LocalStore::new(),
+            widget_enabled: DashMap::new(),
+            widget_value_bus: DashMap::new(),
         })
     }
 }

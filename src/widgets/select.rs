@@ -40,7 +40,14 @@ impl Select {
         ctx: Arc<ChannelContext>,
         tx: tokio::sync::mpsc::UnboundedSender<String>,
     ) {
-        let mut stream = crate::channel::channel_stream(config.clone(), ctx);
+        let ctx_clone = ctx.clone();
+        let widget_id = config.id.clone();
+        let mut stream = crate::channel::channel_stream(config.clone(), ctx)
+            .inspect(move |e| {
+                if let ChannelEvent::Value(cv) = e {
+                    ctx_clone.publish_widget_value(&widget_id, cv.clone());
+                }
+            });
         let mut last_html = String::new();
         while let Some(event) = stream.next().await {
             let html = match event {
