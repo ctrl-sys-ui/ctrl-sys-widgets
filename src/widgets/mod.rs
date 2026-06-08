@@ -3,7 +3,7 @@ use crate::channel::{ChannelContext, ChannelValue};
 use crate::config::ModbusTCPConfig;
 use crate::config::{ActionConfig, ProtocolConfig, ScreenConfig, WidgetConfig, WidgetType};
 use maud::{html, Markup, PreEscaped};
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 
 #[derive(serde::Deserialize)]
 pub struct WriteForm {
@@ -383,6 +383,18 @@ pub async fn write_channel(
         value_str
     );
     match &config.protocol {
+        Some(ProtocolConfig::Local(_)) => {
+            match crate::local_channel::local_write(&config, &value_str, &channel_ctx.local_store) {
+                Ok(()) => {
+                    tracing::info!("[{}] write_channel Local OK", config.id);
+                    html! { span class="write-ok" { "OK" } }
+                }
+                Err(e) => {
+                    tracing::error!("[{}] write_channel Local error: {}", config.id, e);
+                    html! { span class="write-err" { "Error: " (e) } }
+                }
+            }
+        }
         #[cfg(feature = "epics")]
         Some(ProtocolConfig::EpicsPva(e)) => {
             write_channel_epics(
@@ -408,7 +420,7 @@ async fn write_channel_epics(
     pv_name: &str,
     data_type: &Option<String>,
     value_str: String,
-    write_ctx: Arc<Mutex<pvxs_sys::Context>>,
+    write_ctx: Arc<std::sync::Mutex<pvxs_sys::Context>>,
 ) -> Markup {
     let pv = pv_name.to_string();
     let dt = data_type.clone();
@@ -512,6 +524,7 @@ pub(super) fn build_tooltip(config: &crate::config::WidgetConfig, cv: &ChannelVa
     let mut t = String::new();
 
     let protocol_label = match &config.protocol {
+        Some(ProtocolConfig::Local(_)) => "Local",
         #[cfg(feature = "epics")]
         Some(ProtocolConfig::EpicsPva(_)) => "EPICS PVA",
         #[cfg(feature = "modbus")]

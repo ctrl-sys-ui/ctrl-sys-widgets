@@ -1,4 +1,4 @@
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 
 // ─── Unified value type ───────────────────────────────────────────────────────
 
@@ -103,8 +103,9 @@ pub enum ChannelEvent {
 /// Passed through `AppState` and into every SSE handler.
 /// Add new protocol handles here when new protocols are introduced.
 pub struct ChannelContext {
+    pub local_store: Arc<crate::local_channel::LocalStore>,
     #[cfg(feature = "epics")]
-    pub epics_ctx: Arc<Mutex<pvxs_sys::Context>>,
+    pub epics_ctx: Arc<std::sync::Mutex<pvxs_sys::Context>>,
     #[cfg(feature = "modbus")]
     pub modbus_pool: Arc<crate::modbus_client::ModbusPool>,
 }
@@ -112,28 +113,37 @@ pub struct ChannelContext {
 impl ChannelContext {
     #[cfg(all(feature = "epics", feature = "modbus"))]
     pub fn new(
-        epics_ctx: Arc<Mutex<pvxs_sys::Context>>,
+        epics_ctx: Arc<std::sync::Mutex<pvxs_sys::Context>>,
         modbus_pool: Arc<crate::modbus_client::ModbusPool>,
     ) -> Arc<Self> {
         Arc::new(Self {
+            local_store: crate::local_channel::LocalStore::new(),
             epics_ctx,
             modbus_pool,
         })
     }
 
     #[cfg(all(feature = "epics", not(feature = "modbus")))]
-    pub fn new(epics_ctx: Arc<Mutex<pvxs_sys::Context>>) -> Arc<Self> {
-        Arc::new(Self { epics_ctx })
+    pub fn new(epics_ctx: Arc<std::sync::Mutex<pvxs_sys::Context>>) -> Arc<Self> {
+        Arc::new(Self {
+            local_store: crate::local_channel::LocalStore::new(),
+            epics_ctx,
+        })
     }
 
     #[cfg(all(not(feature = "epics"), feature = "modbus"))]
     pub fn new(modbus_pool: Arc<crate::modbus_client::ModbusPool>) -> Arc<Self> {
-        Arc::new(Self { modbus_pool })
+        Arc::new(Self {
+            local_store: crate::local_channel::LocalStore::new(),
+            modbus_pool,
+        })
     }
 
     #[cfg(all(not(feature = "epics"), not(feature = "modbus")))]
     pub fn new() -> Arc<Self> {
-        Arc::new(Self {})
+        Arc::new(Self {
+            local_store: crate::local_channel::LocalStore::new(),
+        })
     }
 }
 
@@ -149,6 +159,13 @@ pub fn channel_stream(
 ) -> futures::stream::BoxStream<'static, ChannelEvent> {
     use crate::config::ProtocolConfig;
 
+    if let Some(ProtocolConfig::Local(_)) = config.protocol.as_ref() {
+        return Box::pin(crate::local_channel::local_stream(
+            config,
+            ctx.local_store.clone(),
+        ));
+    }
+    
     #[cfg(feature = "epics")]
     if matches!(
         config.protocol.as_ref(),

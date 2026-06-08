@@ -569,6 +569,7 @@ fn build_chart_tooltip(config: &WidgetConfig, raw: &ChannelValue) -> String {
     let mut t = String::new();
 
     let protocol_label = match &config.protocol {
+        Some(ProtocolConfig::Local(_)) => "Local",
         #[cfg(feature = "epics")]
         Some(ProtocolConfig::EpicsPva(_)) => "EPICS PVA",
         #[cfg(feature = "modbus")]
@@ -656,10 +657,9 @@ fn build_chart_tooltip(config: &WidgetConfig, raw: &ChannelValue) -> String {
 
 /// Collect all PV names for a multi-series line chart (primary + extras from EpicsPva config).
 fn collect_series_pvs(config: &WidgetConfig) -> Vec<String> {
-    use crate::config::ProtocolConfig;
     match &config.protocol {
         #[cfg(feature = "epics")]
-        Some(ProtocolConfig::EpicsPva(e)) => e.series_pvs(),
+        Some(crate::config::ProtocolConfig::EpicsPva(e)) => e.series_pvs(),
         _ => Vec::new(),
     }
 }
