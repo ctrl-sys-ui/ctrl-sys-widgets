@@ -73,12 +73,6 @@ pub fn render_inner_connected(config: &WidgetConfig, cv: &ChannelValue) -> Marku
 
     html! {
         div class="widget-inner" {
-            label class="widget-label" {
-                (config.label)
-                @if !tooltip.is_empty() {
-                    (super::render_info_btn(&tooltip))
-                }
-            }
             div class="select-with-icon-container" {
                 @if let Some(src) = icon {
                     img class="select-icon" src=(src) alt="status";
@@ -100,10 +94,10 @@ pub fn render_inner_connected(config: &WidgetConfig, cv: &ChannelValue) -> Marku
                     span class="select-display-text" { (display_text) }
                 }
             }
-            span class="status" {}
-            @if let Some(desc) = &config.description {
-                @if !desc.is_empty() {
-                    p class="widget-description" { (desc) }
+            label class="widget-label" {
+                (config.label)
+                @if !tooltip.is_empty() {
+                    (super::render_info_btn(&tooltip))
                 }
             }
         }

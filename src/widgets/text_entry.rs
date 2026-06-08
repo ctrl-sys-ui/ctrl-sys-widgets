@@ -100,17 +100,6 @@ fn render_input_html(
     let input_type = if is_string { "text" } else { "number" };
     html! {
         div class="widget-inner" {
-            label class="widget-label" {
-                (config.label)
-                @if let Some(src) = icon {
-                    img class="widget-status-icon" src=(src) alt="status";
-                }
-                @if !tooltip.is_empty() {
-                    button class="widget-info-btn" data-tooltip=(tooltip) type="button" {
-                        img class="info-icon info-icon--dark"  src=(super::INFO_SVG_DARK)  alt="info";
-                        img class="info-icon info-icon--light" src=(super::INFO_SVG_LIGHT) alt="info";
-                    }                }
-            }
             div class="text-entry-with-icon-container" {
                 @if is_string {
                     input type="text"
@@ -140,10 +129,16 @@ fn render_input_html(
                     span class="units-overlay" { (units) }
                 }
             }
-            span class="status" {}
-            @if let Some(desc) = &config.description {
-                @if !desc.is_empty() {
-                    p class="widget-description" { (desc) }
+            label class="widget-label" {
+                (config.label)
+                @if let Some(src) = icon {
+                    img class="widget-status-icon" src=(src) alt="status";
+                }
+                @if !tooltip.is_empty() {
+                    button class="widget-info-btn" data-tooltip=(tooltip) type="button" {
+                        img class="info-icon info-icon--dark"  src=(super::INFO_SVG_DARK)  alt="info";
+                        img class="info-icon info-icon--light" src=(super::INFO_SVG_LIGHT) alt="info";
+                    }                
                 }
             }
         }

@@ -107,15 +107,6 @@ fn render_slider_html(
 
     html! {
         div class="widget-inner" {
-            label class="widget-label" {
-                (config.label)
-                @if let Some(src) = icon {
-                    img class="widget-status-icon" src=(src) alt="status";
-                }
-                @if !tooltip.is_empty() {
-                    (super::render_info_btn(tooltip))
-                }
-            }
             div class="slider-container" onfocusout=(container_focusout) {
                 input type="range"
                     class="widget-slider"
@@ -147,10 +138,13 @@ fn render_slider_html(
                     span class="slider-units" { (units) }
                 }
             }
-            span class="status" {}
-            @if let Some(desc) = &config.description {
-                @if !desc.is_empty() {
-                    p class="widget-description" { (desc) }
+            label class="widget-label" {
+                (config.label)
+                @if let Some(src) = icon {
+                    img class="widget-status-icon" src=(src) alt="status";
+                }
+                @if !tooltip.is_empty() {
+                    (super::render_info_btn(tooltip))
                 }
             }
         }

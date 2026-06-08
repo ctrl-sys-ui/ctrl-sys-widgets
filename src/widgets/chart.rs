@@ -787,15 +787,6 @@ fn render_chart_html(
 ) -> Markup {
     html! {
         div class="widget-inner" {
-            label class="widget-label" {
-                (config.label)
-                @if let Some(src) = icon {
-                    img class="widget-status-icon" src=(src) alt="status";
-                }
-                @if !tooltip.is_empty() {
-                    (super::render_info_btn(tooltip))
-                }
-            }
             div class="chart-container" {
                 @if !svg_content.is_empty() {
                     (PreEscaped(svg_content))
@@ -803,9 +794,13 @@ fn render_chart_html(
                     div class="chart-placeholder" { "Waiting for data…" }
                 }
             }
-            @if let Some(desc) = &config.description {
-                @if !desc.is_empty() {
-                    p class="widget-description" { (desc) }
+            label class="widget-label" {
+                (config.label)
+                @if let Some(src) = icon {
+                    img class="widget-status-icon" src=(src) alt="status";
+                }
+                @if !tooltip.is_empty() {
+                    (super::render_info_btn(tooltip))
                 }
             }
         }

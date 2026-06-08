@@ -86,15 +86,6 @@ fn render_led_html(
     let led_state = if is_on { "led-on" } else { "led-off" };
     html! {
         div class="widget-inner" {
-            label class="widget-label" {
-                (config.label)
-                @if let Some(src) = icon {
-                    img class="widget-status-icon" src=(src) alt="status";
-                }
-                @if !tooltip.is_empty() {
-                    (super::render_info_btn(tooltip))
-                }
-            }
             div class="led-container" {
                 div class={"led-indicator " (led_state)} {
                     span class="led-light" {}
@@ -105,9 +96,13 @@ fn render_led_html(
                     @else { "OFF" }
                 }
             }
-            @if let Some(desc) = &config.description {
-                @if !desc.is_empty() {
-                    p class="widget-description" { (desc) }
+            label class="widget-label" {
+                (config.label)
+                @if let Some(src) = icon {
+                    img class="widget-status-icon" src=(src) alt="status";
+                }
+                @if !tooltip.is_empty() {
+                    (super::render_info_btn(tooltip))
                 }
             }
         }

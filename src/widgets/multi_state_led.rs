@@ -138,15 +138,6 @@ fn render_polygon_html(config: &WidgetConfig, state_cls: &str, icon: Option<&str
     let wrapper_style = format!("flex-direction:{};", flex_dir);
     html! {
         div class="widget-inner vs-widget" style=(wrapper_style) data-state-pos=(state_pos) {
-            label class="widget-label" {
-                (config.label)
-                @if let Some(src) = icon {
-                    img class="widget-status-icon" src=(src) alt="status";
-                }
-                @if !tooltip.is_empty() {
-                    (super::render_info_btn(tooltip))
-                }
-            }
             svg class="vs-polygon" width=(w) height=(h) viewBox=(view_box)
                 xmlns="http://www.w3.org/2000/svg" {
                 polygon class=(state_cls) points=(points) {}
@@ -154,9 +145,13 @@ fn render_polygon_html(config: &WidgetConfig, state_cls: &str, icon: Option<&str
             span class={"vs-state " (state_cls) "-text"} {
                 (state_label(state_cls))
             }
-            @if let Some(desc) = &config.description {
-                @if !desc.is_empty() {
-                    p class="widget-description" { (desc) }
+            label class="widget-label" {
+                (config.label)
+                @if let Some(src) = icon {
+                    img class="widget-status-icon" src=(src) alt="status";
+                }
+                @if !tooltip.is_empty() {
+                    (super::render_info_btn(tooltip))
                 }
             }
         }
