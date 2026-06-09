@@ -1,6 +1,6 @@
 mod test_config_widget_config {
     use mycela::config::{
-        AppConfig, EpicsPvaConfig, ModbusTCPConfig, ModbusRegisterType,
+        AppConfig, EpicsPvaConfig, LocalConfig, ModbusTCPConfig, ModbusRegisterType,
         ProtocolConfig, WidgetConfig, WidgetType,
     };
 
@@ -69,6 +69,16 @@ mod test_config_widget_config {
     }
 
     #[test]
+    fn test_local_protocol_produces_local_channel_address() {
+        let mut w = widget("w_local", WidgetType::TextUpdate);
+        w.protocol = Some(ProtocolConfig::Local(LocalConfig {
+            channel: "app:setpoint".to_string(),
+            initial_value: Some("12.5".to_string()),
+        }));
+        assert_eq!(w.channel_address(), "local://app:setpoint");
+    }
+
+    #[test]
     fn test_epics_pva_accessor_returns_some_and_modbus_returns_none() {
         let mut w = widget("e", WidgetType::TextUpdate);
         w.protocol = Some(ProtocolConfig::EpicsPva(EpicsPvaConfig {
@@ -97,6 +107,24 @@ mod test_config_widget_config {
         }));
         assert!(w.modbus_tcp().is_some());
         assert!(w.epics_pva().is_none());
+    }
+
+    #[test]
+    fn test_local_accessor_returns_some_for_local_and_none_for_others() {
+        let mut local_widget = widget("l", WidgetType::TextUpdate);
+        local_widget.protocol = Some(ProtocolConfig::Local(LocalConfig {
+            channel: "app:flow".to_string(),
+            initial_value: None,
+        }));
+        assert!(local_widget.local().is_some());
+
+        let mut epics_widget = widget("e2", WidgetType::TextUpdate);
+        epics_widget.protocol = Some(ProtocolConfig::EpicsPva(EpicsPvaConfig {
+            pv_name: "x:pv".to_string(),
+            server: None,
+            pv_names: None,
+        }));
+        assert!(epics_widget.local().is_none());
     }
 
     #[test]

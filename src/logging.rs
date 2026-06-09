@@ -1,25 +1,32 @@
+use tracing_subscriber::filter::LevelFilter;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, Layer};
-use tracing_subscriber::filter::{LevelFilter, filter_fn};
 
 /// Custom timer that emits local wall-clock time with the UTC offset
 /// (including DST), e.g. `2026-05-25T14:01:06.301333+02:00`.
 struct LocalTime;
 
 impl tracing_subscriber::fmt::time::FormatTime for LocalTime {
-    fn format_time(
-        &self,
-        w: &mut tracing_subscriber::fmt::format::Writer<'_>,
-    ) -> std::fmt::Result {
-        write!(w, "{}", chrono::Local::now().format("%Y-%m-%dT%H:%M:%S%.6f%:z"))
+    fn format_time(&self, w: &mut tracing_subscriber::fmt::format::Writer<'_>) -> std::fmt::Result {
+        write!(
+            w,
+            "{}",
+            chrono::Local::now().format("%Y-%m-%dT%H:%M:%S%.6f%:z")
+        )
     }
 }
 
 /// Initialise application logging.
 ///
 /// * `log_dir` — when `Some`, writes two daily rolling log files:
-///   - `mycela.log.<YYYY-MM-DD>` — INFO, WARN and ERROR (operational log)
-///   - `mycela.debug.<YYYY-MM-DD>` — TRACE and DEBUG (verbose/diagnostic log)
-///   The returned guards **must** be held for the entire process lifetime.
+///   - `mycela.log.<YYYY-MM-DD>`   — INFO, WARN and ERROR (operational log)
+///   - `mycela.debug.<YYYY-MM-DD>` — TRACE through ERROR (all levels; verbose/diagnostic log)
+///   The returned guards **must** be held for the entire process lifetime;
+///   dropping them early causes the background writer threads to shut down
+///   and any buffered log messages to be flushed and lost.  Assign the
+///   returned `Vec` to a binding that lives until `main` returns:
+///   ```rust,ignore
+///   let _guards = mycela::logging::init_logging(Some(&log_path));
+///   ```
 /// * When `None`, logs go to stdout only (DEBUG and above).
 ///
 /// Log level is controlled by `RUST_LOG`; default is `mycela=trace`.
@@ -61,16 +68,16 @@ pub fn init_logging(
             .with_writer(info_nb)
             .with_filter(LevelFilter::INFO);
 
-        // Verbose log — TRACE and DEBUG only.
+        // Verbose log — all levels (TRACE through ERROR).
+        // Includes WARN and ERROR so that a developer reading only the debug file
+        // still sees every problem without also needing to open the operational log.
         let debug_appender = tracing_appender::rolling::daily(dir, format!("{app_name}.debug"));
         let (debug_nb, debug_guard) = tracing_appender::non_blocking(debug_appender);
         let debug_layer = tracing_subscriber::fmt::layer()
             .with_ansi(false)
             .with_timer(LocalTime)
             .with_writer(debug_nb)
-            .with_filter(filter_fn(|m| {
-                matches!(*m.level(), tracing::Level::TRACE | tracing::Level::DEBUG)
-            }));
+            .with_filter(LevelFilter::TRACE);
 
         registry.with(info_layer).with(debug_layer).init();
         guards.push(info_guard);

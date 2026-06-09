@@ -1,9 +1,9 @@
-use maud::{html, Markup, PreEscaped};
-use std::sync::{Arc, Mutex};
 use crate::channel::{ChannelContext, ChannelValue};
 #[cfg(feature = "modbus")]
 use crate::config::ModbusTCPConfig;
 use crate::config::{ActionConfig, ProtocolConfig, ScreenConfig, WidgetConfig, WidgetType};
+use maud::{html, Markup, PreEscaped};
+use std::sync::Arc;
 
 #[derive(serde::Deserialize)]
 pub struct WriteForm {
@@ -30,34 +30,34 @@ pub const CHECK_CIRCLE_SVG: &str = "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaH
 /// MD cancel — red, 20 px — server stopped / error
 pub const CANCEL_SVG: &str = "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgd2lkdGg9IjIwIiBoZWlnaHQ9IjIwIj48cGF0aCBmaWxsPSIjZmYzMzMzIiBkPSJNMTIgMkM2LjQ3IDIgMiA2LjQ3IDIgMTJzNC40NyAxMCAxMCAxMCAxMC00LjQ3IDEwLTEwUzE3LjUzIDIgMTIgMnptNSAxMy41OUwxNS41OSAxNyAxMiAxMy40MSA4LjQxIDE3IDcgMTUuNTkgMTAuNTkgMTIgNyA4LjQxIDguNDEgNyAxMiAxMC41OSAxNS41OSA3IDE3IDguNDEgMTMuNDEgMTIgMTcgMTUuNTl6Ii8+PC9zdmc+";
 
+pub mod button;
+pub mod chart;
+pub mod gauge;
+pub mod group;
+pub mod led;
+pub mod multi_state_led;
+pub mod select;
+pub mod slider;
 /// MD bolt — white fill, 16 px — button widget action indicator
 // pub const BOLT_SVG: &str = "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgd2lkdGg9IjE2IiBoZWlnaHQ9IjE2Ij48cGF0aCBmaWxsPSJ3aGl0ZSIgZD0iTTcgMnYxMWgzdjlsNy0xMmgtNGw0LTh6Ii8+PC9zdmc+";
 
 // Widget type modules
 pub mod text_entry;
 pub mod text_update;
-pub mod gauge;
-pub mod led;
-pub mod slider;
-pub mod button;
 pub mod toggle_button;
-pub mod chart;
-pub mod select;
-pub mod group;
-pub mod multi_state_led;
 
 // Re-export widget render functions
+pub use button::render_button;
+pub use chart::render_chart;
+pub use gauge::render_gauge;
+pub use group::render_group;
+pub use led::render_led;
+pub use multi_state_led::render_multi_state_led;
+pub use select::render_select;
+pub use slider::render_slider;
 pub use text_entry::render_text_entry;
 pub use text_update::render_text_update;
-pub use gauge::render_gauge;
-pub use led::render_led;
-pub use slider::render_slider;
-pub use button::render_button;
 pub use toggle_button::render_toggle_button;
-pub use chart::render_chart;
-pub use select::render_select;
-pub use group::render_group;
-pub use multi_state_led::render_multi_state_led;
 
 /// Recursively collect all data widgets (non-Group) from a widget tree,
 /// flattening children of Group containers so they can each get SSE monitors.
@@ -78,10 +78,10 @@ pub fn collect_data_widgets(widgets: &[WidgetConfig]) -> Vec<WidgetConfig> {
 ///
 /// Dispatch an async widget monitor based on widget type, sending rendered HTML fragments to the provided channel.
 /// Used by the individual `/stream/screen/{screen_id}` SSE endpoint for each widget, and also by the multiplexed `/stream/all` endpoint.
-/// 
-/// The widget monitor runs indefinitely, sending updated HTML whenever the widget's data changes. 
+///
+/// The widget monitor runs indefinitely, sending updated HTML whenever the widget's data changes.
 /// For widgets with user actions (e.g. buttons), the monitor also listens for incoming messages on its channel to receive user input and perform actions.
-/// 
+///
 pub async fn run_widget_monitor_html_async(
     config: WidgetConfig,
     ctx: Arc<ChannelContext>,
@@ -95,10 +95,14 @@ pub async fn run_widget_monitor_html_async(
         WidgetType::Led => led::Led::run_monitor_async(config, ctx, tx).await,
         WidgetType::Slider => slider::Slider::run_monitor_async(config, ctx, tx).await,
         WidgetType::Button => button::Button::run_monitor_async(config, ctx, tx).await,
-        WidgetType::ToggleButton => toggle_button::ToggleButton::run_monitor_async(config, ctx, tx).await,
+        WidgetType::ToggleButton => {
+            toggle_button::ToggleButton::run_monitor_async(config, ctx, tx).await
+        }
         WidgetType::Chart => chart::Chart::run_monitor_async(config, ctx, tx).await,
         WidgetType::Select => select::Select::run_monitor_async(config, ctx, tx).await,
-        WidgetType::MultiStateLed => multi_state_led::MultiStateLed::run_monitor_async(config, ctx, tx).await,
+        WidgetType::MultiStateLed => {
+            multi_state_led::MultiStateLed::run_monitor_async(config, ctx, tx).await
+        }
         WidgetType::Group => {}
     }
 }
@@ -109,16 +113,25 @@ pub async fn run_widget_monitor_async(
     config: WidgetConfig,
     widget_id: String,
     ctx: Arc<ChannelContext>,
-    tx: tokio::sync::mpsc::UnboundedSender<(String, String)>,
+    tx: tokio::sync::mpsc::Sender<(String, String)>,
 ) {
     let (inner_tx, mut inner_rx) = tokio::sync::mpsc::unbounded_channel::<String>();
 
-    // Forward task: tags each HTML fragment with widget_id for the multiplexed SSE stream
+    // Forward task: tag each HTML fragment with the widget ID and push it to the
+    // bounded dispatch channel.  When the channel is full (slow client) the frame
+    // is dropped with a debug log rather than accumulating unbounded memory.
     let fwd_wid = widget_id;
     tokio::spawn(async move {
         while let Some(html) = inner_rx.recv().await {
-            if tx.send((fwd_wid.clone(), html)).is_err() {
-                break;
+            match tx.try_send((fwd_wid.clone(), html)) {
+                Ok(()) => {}
+                Err(tokio::sync::mpsc::error::TrySendError::Full(_)) => {
+                    tracing::debug!(
+                        "SSE dispatch channel full for '{}' — frame dropped",
+                        fwd_wid
+                    );
+                }
+                Err(tokio::sync::mpsc::error::TrySendError::Closed(_)) => break,
             }
         }
     });
@@ -129,17 +142,17 @@ pub async fn run_widget_monitor_async(
 /// Render widget from config — each widget's outer div contains its own SSE connection.
 pub fn render_widget_from_config(widget: &WidgetConfig) -> Markup {
     match widget.widget_type {
-        WidgetType::TextEntry  => render_text_entry(widget),
+        WidgetType::TextEntry => render_text_entry(widget),
         WidgetType::TextUpdate => render_text_update(widget),
-        WidgetType::Gauge      => render_gauge(widget),
-        WidgetType::Led        => render_led(widget),
-        WidgetType::Slider     => render_slider(widget),
-        WidgetType::Button     => render_button(widget),
+        WidgetType::Gauge => render_gauge(widget),
+        WidgetType::Led => render_led(widget),
+        WidgetType::Slider => render_slider(widget),
+        WidgetType::Button => render_button(widget),
         WidgetType::ToggleButton => render_toggle_button(widget),
-        WidgetType::Chart      => render_chart(widget),
-        WidgetType::Select      => render_select(widget),
+        WidgetType::Chart => render_chart(widget),
+        WidgetType::Select => render_select(widget),
         WidgetType::MultiStateLed => render_multi_state_led(widget),
-        WidgetType::Group       => render_group(widget),
+        WidgetType::Group => render_group(widget),
     }
 }
 
@@ -159,14 +172,26 @@ pub fn render_screen_with_options(
     } else {
         None
     };
-    let has_server_controls = config.actions.as_ref().map(|actions| {
-        actions.iter().any(|action| matches!(action,
-            ActionConfig::Api { path, .. } if path.starts_with("/api/server/")))
-    }).unwrap_or(false);
-    let has_modbus_controls = config.actions.as_ref().map(|actions| {
-        actions.iter().any(|action| matches!(action,
-            ActionConfig::Api { path, .. } if path.starts_with("/api/modbus/")))
-    }).unwrap_or(false);
+    let has_server_controls = config
+        .actions
+        .as_ref()
+        .map(|actions| {
+            actions.iter().any(|action| {
+                matches!(action,
+            ActionConfig::Api { path, .. } if path.starts_with("/api/server/"))
+            })
+        })
+        .unwrap_or(false);
+    let has_modbus_controls = config
+        .actions
+        .as_ref()
+        .map(|actions| {
+            actions.iter().any(|action| {
+                matches!(action,
+            ActionConfig::Api { path, .. } if path.starts_with("/api/modbus/"))
+            })
+        })
+        .unwrap_or(false);
 
     html! {
         (maud::DOCTYPE)
@@ -225,10 +250,10 @@ pub fn render_screen_with_options(
                     }
                 }
 
+                @let num_widgets = collect_data_widgets(&config.widgets).len();
+                @let columns = if num_widgets <= 2 { num_widgets } else if num_widgets <= 4 { 2 } else if num_widgets <= 6 { 3 } else { 4 };
                 @if enable_streaming {
                     main class="screen-container" hx-sse=(format!("connect:/stream/screen/{}", config.id)) {
-                        @let num_widgets = config.widgets.len();
-                        @let columns = if num_widgets <= 2 { num_widgets } else if num_widgets <= 4 { 2 } else if num_widgets <= 6 { 3 } else { 4 };
                         div class="widget-grid" style=(format!("grid-template-columns: repeat({}, 1fr);", columns)) {
                             @for widget in &config.widgets {
                                 (render_widget_from_config(widget))
@@ -237,8 +262,6 @@ pub fn render_screen_with_options(
                     }
                 } @else {
                     main class="screen-container" {
-                        @let num_widgets = config.widgets.len();
-                        @let columns = if num_widgets <= 2 { num_widgets } else if num_widgets <= 4 { 2 } else if num_widgets <= 6 { 3 } else { 4 };
                         div class="widget-grid" style=(format!("grid-template-columns: repeat({}, 1fr);", columns)) {
                             @for widget in &config.widgets {
                                 (render_widget_from_config(widget))
@@ -286,7 +309,11 @@ fn render_action(action: &ActionConfig, nav_base: Option<&str>) -> Markup {
                 button class="nav-button" onclick=(format!("(function(t){{var u=t.startsWith('/') ? (window.location.origin + t) : t; window.open(u,'_blank','width=1200,height=800,resizable=yes,scrollbars=yes');}})({});", serde_json::to_string(&target).unwrap())) { (label) }
             }
         }
-        ActionConfig::Api { label, method, path } => match method.to_lowercase().as_str() {
+        ActionConfig::Api {
+            label,
+            method,
+            path,
+        } => match method.to_lowercase().as_str() {
             "post" => html! {
                 button class="nav-button"
                     type="button"
@@ -318,7 +345,10 @@ pub fn check_control_limits(config: &WidgetConfig, value_str: &str) -> Option<Ma
     if v < ctrl.limit_low || v > ctrl.limit_high {
         tracing::warn!(
             "[{}] write rejected: {} outside control limits [{}, {}]",
-            config.id, v, ctrl.limit_low, ctrl.limit_high
+            config.id,
+            v,
+            ctrl.limit_low,
+            ctrl.limit_high
         );
         Some(html! {
             span class="write-err" {
@@ -332,7 +362,7 @@ pub fn check_control_limits(config: &WidgetConfig, value_str: &str) -> Option<Ma
 
 /// Thin dispatcher that calls the correct protocol adapter based on `config.protocol`.
 /// This will write/put the value on the wire.
-/// 
+///
 /// Returns HTML markup indicating:
 /// - success ("OK")
 /// - External error ("Error: ...")
@@ -345,12 +375,36 @@ pub async fn write_channel(
     if let Some(err) = check_control_limits(&config, &value_str) {
         return err;
     }
-    tracing::info!("[{}] write_channel: ch={}, data_type={:?}, value='{}'",
-        config.id, config.channel_address(), config.data_type, value_str);
+    tracing::info!(
+        "[{}] write_channel: ch={}, data_type={:?}, value='{}'",
+        config.id,
+        config.channel_address(),
+        config.data_type,
+        value_str
+    );
     match &config.protocol {
+        Some(ProtocolConfig::Local(_)) => {
+            match crate::local_channel::local_write(&config, &value_str, &channel_ctx.local_store) {
+                Ok(()) => {
+                    tracing::info!("[{}] write_channel Local OK", config.id);
+                    html! { span class="write-ok" { "OK" } }
+                }
+                Err(e) => {
+                    tracing::error!("[{}] write_channel Local error: {}", config.id, e);
+                    html! { span class="write-err" { "Error: " (e) } }
+                }
+            }
+        }
         #[cfg(feature = "epics")]
         Some(ProtocolConfig::EpicsPva(e)) => {
-            write_channel_epics(&config.id, &e.pv_name, &config.data_type, value_str, channel_ctx.epics_ctx.clone()).await
+            write_channel_epics(
+                &config.id,
+                &e.pv_name,
+                &config.data_type,
+                value_str,
+                channel_ctx.epics_ctx.clone(),
+            )
+            .await
         }
         #[cfg(feature = "modbus")]
         Some(ProtocolConfig::ModbusTcp(m)) => {
@@ -366,7 +420,7 @@ async fn write_channel_epics(
     pv_name: &str,
     data_type: &Option<String>,
     value_str: String,
-    write_ctx: Arc<Mutex<pvxs_sys::Context>>,
+    write_ctx: Arc<std::sync::Mutex<pvxs_sys::Context>>,
 ) -> Markup {
     let pv = pv_name.to_string();
     let dt = data_type.clone();
@@ -374,18 +428,21 @@ async fn write_channel_epics(
         let mut ctx = write_ctx.lock().unwrap();
         match dt.as_deref() {
             Some("int32") | Some("int") | Some("integer") | Some("bool") => {
-                let v: i32 = value_str.trim().parse()
-                    .map_err(|_| pvxs_sys::PvxsError::new(format!("invalid int32: '{}'", value_str.trim())))?;
+                let v: i32 = value_str.trim().parse().map_err(|_| {
+                    pvxs_sys::PvxsError::new(format!("invalid int32: '{}'", value_str.trim()))
+                })?;
                 ctx.put_int32(&pv, v, 5.0)
             }
             Some("enum") => {
-                let v: i16 = value_str.trim().parse()
-                    .map_err(|_| pvxs_sys::PvxsError::new(format!("invalid enum index: '{}'", value_str.trim())))?;
+                let v: i16 = value_str.trim().parse().map_err(|_| {
+                    pvxs_sys::PvxsError::new(format!("invalid enum index: '{}'", value_str.trim()))
+                })?;
                 ctx.put_enum(&pv, v, 5.0)
             }
             Some("double") | Some("float") | Some("f64") | Some("f32") => {
-                let v: f64 = value_str.trim().parse()
-                    .map_err(|_| pvxs_sys::PvxsError::new(format!("invalid float: '{}'", value_str.trim())))?;
+                let v: f64 = value_str.trim().parse().map_err(|_| {
+                    pvxs_sys::PvxsError::new(format!("invalid float: '{}'", value_str.trim()))
+                })?;
                 ctx.put_double(&pv, v, 5.0)
             }
             _ => ctx.put_string(&pv, value_str.trim(), 5.0),
@@ -418,9 +475,11 @@ async fn write_channel_modbus(
     let physical: f64 = match value_str.trim().parse() {
         Ok(v) => v,
         Err(_) => match value_str.trim().to_lowercase().as_str() {
-            "true" | "1" | "on"  => 1.0,
+            "true" | "1" | "on" => 1.0,
             "false" | "0" | "off" => 0.0,
-            _ => return html! { span class="write-err" { "Invalid value: '" (value_str.trim()) "'" } },
+            _ => {
+                return html! { span class="write-err" { "Invalid value: '" (value_str.trim()) "'" } }
+            }
         },
     };
     match crate::modbus_client::modbus_write(&m, physical, &channel_ctx.modbus_pool).await {
@@ -465,11 +524,12 @@ pub(super) fn build_tooltip(config: &crate::config::WidgetConfig, cv: &ChannelVa
     let mut t = String::new();
 
     let protocol_label = match &config.protocol {
+        Some(ProtocolConfig::Local(_)) => "Local",
         #[cfg(feature = "epics")]
-        Some(ProtocolConfig::EpicsPva(_))  => "EPICS PVA",
+        Some(ProtocolConfig::EpicsPva(_)) => "EPICS PVA",
         #[cfg(feature = "modbus")]
         Some(ProtocolConfig::ModbusTcp(_)) => "Modbus TCP",
-        _                                  => "None",
+        _ => "None",
     };
     t.push_str(&format!("ID: {}\n", config.id));
     t.push_str(&format!("Protocol: {}\n", protocol_label));
@@ -479,21 +539,23 @@ pub(super) fn build_tooltip(config: &crate::config::WidgetConfig, cv: &ChannelVa
         t.push_str(&cv.primary_meta.description);
         t.push('\n');
     }
-    if !cv.units.is_empty() { t.push_str(&format!("Units: {}\n", cv.units)); }
+    if !cv.units.is_empty() {
+        t.push_str(&format!("Units: {}\n", cv.units));
+    }
     t.push_str(&format!("Precision: {}\n", cv.precision));
     if cv.display_low != 0.0 || (cv.display_high - 100.0).abs() > f64::EPSILON {
-        t.push_str(&format!("Display Low: {}\n",  cv.display_low));
+        t.push_str(&format!("Display Low: {}\n", cv.display_low));
         t.push_str(&format!("Display High: {}\n", cv.display_high));
     }
     if cv.control_low != cv.display_low || cv.control_high != cv.display_high {
-        t.push_str(&format!("Control Low: {}\n",  cv.control_low));
+        t.push_str(&format!("Control Low: {}\n", cv.control_low));
         t.push_str(&format!("Control High: {}\n", cv.control_high));
     }
     if cv.low_alarm_limit != 0.0 || cv.high_alarm_limit != 100.0 {
-        t.push_str(&format!("Low Alarm Limit: {}\n",    cv.low_alarm_limit));
-        t.push_str(&format!("Low Warning Limit: {}\n",  cv.low_warn_limit));
+        t.push_str(&format!("Low Alarm Limit: {}\n", cv.low_alarm_limit));
+        t.push_str(&format!("Low Warning Limit: {}\n", cv.low_warn_limit));
         t.push_str(&format!("High Warning Limit: {}\n", cv.high_warn_limit));
-        t.push_str(&format!("High Alarm Limit: {}\n",   cv.high_alarm_limit));
+        t.push_str(&format!("High Alarm Limit: {}\n", cv.high_alarm_limit));
     }
     let sev_str = match cv.alarm_severity {
         0 => "No Alarm",
@@ -502,7 +564,10 @@ pub(super) fn build_tooltip(config: &crate::config::WidgetConfig, cv: &ChannelVa
         _ => "Invalid",
     };
     t.push_str(&format!("Alarm Severity: {}\n", sev_str));
-    t.push_str(&format!("Alarm Status: {}\n", alarm_status_str(cv.alarm_status)));
+    t.push_str(&format!(
+        "Alarm Status: {}\n",
+        alarm_status_str(cv.alarm_status)
+    ));
 
     t.trim_end().to_string()
 }
@@ -542,8 +607,12 @@ pub(super) fn build_disconnected_tooltip(config: &crate::config::WidgetConfig) -
 pub fn widget_container_style(config: &crate::config::WidgetConfig) -> Option<String> {
     let mut s = String::from("position:relative;");
     if let Some(style) = &config.style {
-        if let Some(w) = &style.width  { s.push_str(&format!("width:{};",  w)); }
-        if let Some(h) = &style.height { s.push_str(&format!("height:{};", h)); }
+        if let Some(w) = &style.width {
+            s.push_str(&format!("width:{};", w));
+        }
+        if let Some(h) = &style.height {
+            s.push_str(&format!("height:{};", h));
+        }
     }
     Some(s)
 }
@@ -563,4 +632,3 @@ pub(super) fn render_info_btn(tooltip: &str) -> maud::Markup {
         }
     }
 }
-

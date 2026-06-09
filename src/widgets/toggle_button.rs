@@ -1,9 +1,10 @@
-use maud::{html, Markup};
-use std::sync::Arc;
-use futures::StreamExt;
-use tokio::time::{Duration, Instant};
 use crate::channel::{ChannelContext, ChannelEvent, ChannelValue};
 use crate::config::WidgetConfig;
+use futures::StreamExt;
+use maud::{html, Markup};
+use std::sync::Arc;
+use tokio::sync::watch;
+use tokio::time::{Duration, Instant};
 
 pub struct ToggleButton {
     config: WidgetConfig,
@@ -35,13 +36,10 @@ impl ToggleButton {
             }
         }
     }
-
 }
 
 pub fn render_inner_connected(config: &WidgetConfig, cv: &ChannelValue) -> Markup {
-    let is_on = cv.raw_value > 0.5;
-    let next_val = if is_on { "0" } else { "1" };
-    render_toggle_html(config, is_on, next_val, false, &super::build_tooltip(config, cv), None)
+    render_inner_connected_with_countdown(config, cv, None, true)
 }
 
 pub fn render_inner_disconnected(config: &WidgetConfig) -> Markup {
@@ -109,6 +107,7 @@ fn render_inner_connected_with_countdown(
     config: &WidgetConfig,
     cv: &ChannelValue,
     countdown_secs: Option<u64>,
+    enabled: bool,
 ) -> Markup {
     let is_on = cv.raw_value > 0.5;
     let next_val = if is_on { "0" } else { "1" };
@@ -116,7 +115,7 @@ fn render_inner_connected_with_countdown(
         config,
         is_on,
         next_val,
-        false,
+        !enabled,
         &super::build_tooltip(config, cv),
         countdown_secs,
     )
@@ -126,15 +125,22 @@ impl ToggleButton {
     async fn next_channel_event(
         stream: &mut (impl tokio_stream::Stream<Item = ChannelEvent> + Unpin),
         deadline: Option<Instant>,
+        enabled_rx: &mut watch::Receiver<bool>,
     ) -> NextEvent {
         match deadline {
             Some(deadline) => {
                 tokio::select! {
                     event = stream.next() => NextEvent::Channel(event),
                     _ = tokio::time::sleep_until(deadline) => NextEvent::Tick,
+                    Ok(()) = enabled_rx.changed() => NextEvent::EnabledChanged,
                 }
             }
-            None => NextEvent::Channel(stream.next().await),
+            None => {
+                tokio::select! {
+                    event = stream.next() => NextEvent::Channel(event),
+                    Ok(()) = enabled_rx.changed() => NextEvent::EnabledChanged,
+                }
+            }
         }
     }
 }
@@ -142,6 +148,7 @@ impl ToggleButton {
 enum NextEvent {
     Channel(Option<ChannelEvent>),
     Tick,
+    EnabledChanged,
 }
 
 impl ToggleButton {
@@ -150,14 +157,18 @@ impl ToggleButton {
         ctx: Arc<ChannelContext>,
         tx: tokio::sync::mpsc::UnboundedSender<String>,
     ) {
-        let mut stream = crate::channel::channel_stream(config.clone(), ctx);
+        // Clone ctx so it remains available for reset writes after the stream takes ownership.
+        let ctx_clone = ctx.clone();
+        let widget_id = config.id.clone();
+        let mut enabled_rx = ctx.subscribe_widget_enabled(&config.id);
+        let mut stream = crate::channel::channel_stream(config.clone(), ctx.clone());
         let mut countdown_end: Option<Instant> = None;
         let mut last_value: Option<ChannelValue> = None;
 
         loop {
             let next_tick = countdown_end.map(|_| Instant::now() + Duration::from_secs(1));
 
-            match Self::next_channel_event(&mut stream, next_tick).await {
+            match Self::next_channel_event(&mut stream, next_tick, &mut enabled_rx).await {
                 NextEvent::Channel(None) => break,
                 NextEvent::Channel(Some(ChannelEvent::Connected)) => continue,
                 NextEvent::Channel(Some(ChannelEvent::Disconnected(_)))
@@ -172,10 +183,12 @@ impl ToggleButton {
                     }
                 }
                 NextEvent::Channel(Some(ChannelEvent::Value(cv))) => {
+                    ctx_clone.publish_widget_value(&widget_id, cv.clone());
                     let is_on = cv.raw_value > 0.5;
                     if is_on {
                         if let Some(timeout_ms) = config.reset_timeout.filter(|ms| *ms > 0) {
-                            countdown_end = Some(Instant::now() + Duration::from_millis(timeout_ms));
+                            countdown_end =
+                                Some(Instant::now() + Duration::from_millis(timeout_ms));
                         } else {
                             countdown_end = None;
                         }
@@ -188,10 +201,11 @@ impl ToggleButton {
                         .and_then(|end| end.checked_duration_since(now))
                         .map(|d| d.as_secs().max(1));
 
+                    let enabled = *enabled_rx.borrow();
                     last_value = Some(cv.clone());
                     if tx
                         .send(
-                            render_inner_connected_with_countdown(&config, &cv, countdown_secs)
+                            render_inner_connected_with_countdown(&config, &cv, countdown_secs, enabled)
                                 .into_string(),
                         )
                         .is_err()
@@ -199,20 +213,54 @@ impl ToggleButton {
                         break;
                     }
                 }
+                NextEvent::EnabledChanged => {
+                    let enabled = *enabled_rx.borrow();
+                    let html = match &last_value {
+                        Some(cv) => {
+                            let now = Instant::now();
+                            let countdown_secs = countdown_end
+                                .and_then(|end| end.checked_duration_since(now))
+                                .map(|d| d.as_secs().max(1));
+                            render_inner_connected_with_countdown(&config, cv, countdown_secs, enabled).into_string()
+                        }
+                        None => render_inner_disconnected(&config).into_string(),
+                    };
+                    if tx.send(html).is_err() { break; }
+                }
                 NextEvent::Tick => {
                     if let (Some(end), Some(cv)) = (countdown_end, last_value.as_ref()) {
                         let now = Instant::now();
-                        let countdown_secs = end
-                            .checked_duration_since(now)
-                            .map(|d| d.as_secs().max(1));
+                        let countdown_secs =
+                            end.checked_duration_since(now).map(|d| d.as_secs().max(1));
 
                         if countdown_secs.is_none() {
+                            // Countdown has expired.  Write reset_default to the channel so
+                            // the PV/register is actually reset.  This fires unconditionally
+                            // — whether the ON state came from a button click or an external
+                            // channel event — so the button always resets after the timeout.
                             countdown_end = None;
-                        }
-
-                        if tx
+                            let reset_value = config.reset_default.unwrap_or(0).to_string();
+                            let config_write = config.clone();
+                            let ctx_write = ctx.clone();
+                            tokio::spawn(async move {
+                                tracing::info!(
+                                    "[{}] toggle countdown expired — writing reset_default={}",
+                                    config_write.id,
+                                    reset_value
+                                );
+                                let _ = crate::widgets::write_channel(
+                                    (*config_write).clone(),
+                                    reset_value,
+                                    ctx_write,
+                                )
+                                .await;
+                            });
+                            // Don't push an SSE update here; wait for the channel to echo
+                            // back the written value so the button transitions directly
+                            // from the last countdown tick to OFF with no "pressed" flash.
+                        } else if tx
                             .send(
-                                render_inner_connected_with_countdown(&config, cv, countdown_secs)
+                                render_inner_connected_with_countdown(&config, cv, countdown_secs, *enabled_rx.borrow())
                                     .into_string(),
                             )
                             .is_err()

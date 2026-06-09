@@ -1,4 +1,3 @@
-use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -46,11 +45,17 @@ pub fn epics_stream(
 
 // ─── Single-PV monitor ────────────────────────────────────────────────────────
 
-fn run_single_monitor(config: Arc<WidgetConfig>, epics_ctx: Arc<Mutex<Context>>, tx: UnboundedSender<ChannelEvent>) {
+fn run_single_monitor(
+    config: Arc<WidgetConfig>,
+    epics_ctx: Arc<Mutex<Context>>,
+    tx: UnboundedSender<ChannelEvent>,
+) {
     let pv_name = match config.protocol.as_ref() {
         Some(ProtocolConfig::EpicsPva(e)) => e.pv_name.clone(),
         _ => {
-            let _ = tx.send(ChannelEvent::Error("epics_stream: not an epics-pva widget".into()));
+            let _ = tx.send(ChannelEvent::Error(
+                "epics_stream: not an epics-pva widget".into(),
+            ));
             return;
         }
     };
@@ -119,15 +124,14 @@ fn run_multi_monitor(
     epics_ctx: Arc<Mutex<Context>>,
     tx: UnboundedSender<ChannelEvent>,
 ) {
-    type State = Arc<Mutex<(HashMap<String, Vec<f64>>, PrimaryMeta)>>;
-    let state: State = Arc::new(Mutex::new((HashMap::new(), PrimaryMeta::default())));
+    type State = Arc<Mutex<(Vec<(String, Vec<f64>)>, PrimaryMeta)>>;
+    let state: State = Arc::new(Mutex::new((Vec::new(), PrimaryMeta::default())));
 
     let handles: Vec<_> = all_pvs
         .iter()
         .cloned()
         .enumerate()
         .map(|(idx, pv_name)| {
-            let all_pvs = all_pvs.clone();
             let state = state.clone();
             let tx = tx.clone();
             let is_primary = idx == 0;
@@ -158,7 +162,12 @@ fn run_multi_monitor(
                         Ok(Some(raw)) => {
                             if let Ok(arr) = raw.get_field_double_array("value") {
                                 let mut guard = state.lock().unwrap();
-                                guard.0.insert(pv_name.clone(), arr);
+                                if let Some(entry) = guard.0.iter_mut().find(|(n, _)| n == &pv_name)
+                                {
+                                    entry.1 = arr;
+                                } else {
+                                    guard.0.push((pv_name.clone(), arr));
+                                }
                                 if is_primary {
                                     guard.1 = PrimaryMeta {
                                         alarm_severity: raw
@@ -183,12 +192,6 @@ fn run_multi_monitor(
                                 cv.primary_meta = guard.1.clone();
                                 cv.alarm_severity = guard.1.alarm_severity;
                                 drop(guard);
-                                // Attach the ordered PV list via a side-channel in the
-                                // named_series map ordering — the chart renderer uses
-                                // `all_pvs` order when iterating series.
-                                // Keep this join to document that series order follows
-                                // the original `all_pvs` list (not hash map key order).
-                                let _ = all_pvs.join(","); // unused, order via `all_pvs` arg
                                 if tx.send(ChannelEvent::Value(cv)).is_err() {
                                     break;
                                 }
@@ -230,30 +233,41 @@ pub fn channel_value_from_epics(raw: &Value, config: &WidgetConfig) -> ChannelVa
     // Widget-level metadata as fallback when EPICS has not yet delivered server metadata.
     let meta_display = config.metadata.as_ref().and_then(|m| m.display.as_ref());
     let meta_control = config.metadata.as_ref().and_then(|m| m.control.as_ref());
-    let meta_alarm   = config.metadata.as_ref().and_then(|m| m.alarm.as_ref());
+    let meta_alarm = config.metadata.as_ref().and_then(|m| m.alarm.as_ref());
 
     let pv_alarm_severity = raw.get_field_int32("alarm.severity").unwrap_or(0);
-    let alarm_status       = raw.get_field_int32("alarm.status").unwrap_or(0);
-    let units = raw.get_field_string("display.units").ok()
+    let alarm_status = raw.get_field_int32("alarm.status").unwrap_or(0);
+    let units = raw
+        .get_field_string("display.units")
+        .ok()
         .filter(|s| !s.is_empty())
         .unwrap_or_else(|| meta_display.map(|d| d.units.clone()).unwrap_or_default());
-    let precision = raw.get_field_int32("display.precision")
+    let precision = raw
+        .get_field_int32("display.precision")
         .unwrap_or_else(|_| meta_display.map(|d| d.precision).unwrap_or(2));
-    let display_low  = raw.get_field_double("display.limitLow")
+    let display_low = raw
+        .get_field_double("display.limitLow")
         .unwrap_or_else(|_| meta_display.map(|d| d.limit_low).unwrap_or(0.0));
-    let display_high = raw.get_field_double("display.limitHigh")
+    let display_high = raw
+        .get_field_double("display.limitHigh")
         .unwrap_or_else(|_| meta_display.map(|d| d.limit_high).unwrap_or(100.0));
-    let control_low  = raw.get_field_double("control.limitLow")
+    let control_low = raw
+        .get_field_double("control.limitLow")
         .unwrap_or_else(|_| meta_control.map(|c| c.limit_low).unwrap_or(0.0));
-    let control_high = raw.get_field_double("control.limitHigh")
+    let control_high = raw
+        .get_field_double("control.limitHigh")
         .unwrap_or_else(|_| meta_control.map(|c| c.limit_high).unwrap_or(100.0));
-    let low_alarm_limit = raw.get_field_double("valueAlarm.lowAlarmLimit")
+    let low_alarm_limit = raw
+        .get_field_double("valueAlarm.lowAlarmLimit")
         .unwrap_or_else(|_| meta_alarm.map(|a| a.low_alarm_limit).unwrap_or(0.0));
-    let low_warn_limit = raw.get_field_double("valueAlarm.lowWarningLimit")
+    let low_warn_limit = raw
+        .get_field_double("valueAlarm.lowWarningLimit")
         .unwrap_or_else(|_| meta_alarm.map(|a| a.low_warning_limit).unwrap_or(0.0));
-    let high_warn_limit = raw.get_field_double("valueAlarm.highWarningLimit")
+    let high_warn_limit = raw
+        .get_field_double("valueAlarm.highWarningLimit")
         .unwrap_or_else(|_| meta_alarm.map(|a| a.high_warning_limit).unwrap_or(100.0));
-    let high_alarm_limit = raw.get_field_double("valueAlarm.highAlarmLimit")
+    let high_alarm_limit = raw
+        .get_field_double("valueAlarm.highAlarmLimit")
         .unwrap_or_else(|_| meta_alarm.map(|a| a.high_alarm_limit).unwrap_or(100.0));
 
     let array_values = raw.get_field_double_array("value").unwrap_or_default();
@@ -268,12 +282,11 @@ pub fn channel_value_from_epics(raw: &Value, config: &WidgetConfig) -> ChannelVa
     } else {
         match config.data_type.as_deref() {
             Some("string") => raw.get_field_string("value").unwrap_or_default(),
-            Some("int32") | Some("int") | Some("integer") | Some("bool") => {
-                raw.get_field_int32("value")
-                    .ok()
-                    .map(|v| v.to_string())
-                    .unwrap_or_default()
-            }
+            Some("int32") | Some("int") | Some("integer") | Some("bool") => raw
+                .get_field_int32("value")
+                .ok()
+                .map(|v| v.to_string())
+                .unwrap_or_default(),
             _ => format!("{:.prec$}", raw_value, prec = precision as usize),
         }
     };
@@ -282,7 +295,9 @@ pub fn channel_value_from_epics(raw: &Value, config: &WidgetConfig) -> ChannelVa
         .get_field_string("display.description")
         .unwrap_or_default();
     let description = if description.is_empty() {
-        meta_display.map(|d| d.description.clone()).unwrap_or_default()
+        meta_display
+            .map(|d| d.description.clone())
+            .unwrap_or_default()
     } else {
         description
     };
@@ -297,14 +312,16 @@ pub fn channel_value_from_epics(raw: &Value, config: &WidgetConfig) -> ChannelVa
     let alarm_severity = if server_has_alarm {
         pv_alarm_severity
     } else {
-        meta_alarm.map(|a| a.compute_severity(raw_value)).unwrap_or(0)
+        meta_alarm
+            .map(|a| a.compute_severity(raw_value))
+            .unwrap_or(0)
     };
 
     ChannelValue {
         raw_value,
         value_str,
         array_values,
-        named_series: HashMap::new(),
+        named_series: Vec::new(),
         alarm_severity,
         alarm_status,
         units: units.clone(),
