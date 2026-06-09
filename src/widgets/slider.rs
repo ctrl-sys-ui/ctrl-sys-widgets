@@ -40,7 +40,14 @@ impl Slider {
         ctx: Arc<ChannelContext>,
         tx: tokio::sync::mpsc::UnboundedSender<String>,
     ) {
-        let mut stream = crate::channel::channel_stream(config.clone(), ctx);
+        let ctx_clone = ctx.clone();
+        let widget_id = config.id.clone();
+        let mut stream = crate::channel::channel_stream(config.clone(), ctx)
+            .inspect(move |e| {
+                if let ChannelEvent::Value(cv) = e {
+                    ctx_clone.publish_widget_value(&widget_id, cv.clone());
+                }
+            });
         while let Some(event) = stream.next().await {
             let html = match event {
                 ChannelEvent::Value(cv)          => render_inner_connected(&config, &cv).into_string(),
@@ -107,15 +114,6 @@ fn render_slider_html(
 
     html! {
         div class="widget-inner" {
-            label class="widget-label" {
-                (config.label)
-                @if let Some(src) = icon {
-                    img class="widget-status-icon" src=(src) alt="status";
-                }
-                @if !tooltip.is_empty() {
-                    (super::render_info_btn(tooltip))
-                }
-            }
             div class="slider-container" onfocusout=(container_focusout) {
                 input type="range"
                     class="widget-slider"
@@ -147,10 +145,13 @@ fn render_slider_html(
                     span class="slider-units" { (units) }
                 }
             }
-            span class="status" {}
-            @if let Some(desc) = &config.description {
-                @if !desc.is_empty() {
-                    p class="widget-description" { (desc) }
+            label class="widget-label" {
+                (config.label)
+                @if let Some(src) = icon {
+                    img class="widget-status-icon" src=(src) alt="status";
+                }
+                @if !tooltip.is_empty() {
+                    (super::render_info_btn(tooltip))
                 }
             }
         }

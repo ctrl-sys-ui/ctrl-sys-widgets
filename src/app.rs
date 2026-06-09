@@ -75,6 +75,19 @@ impl AppState {
         false
     }
 
+    /// Enable or disable a widget by ID.
+    ///
+    /// The change propagates automatically to any running widget monitor —
+    /// the button re-renders as disabled/enabled without any extra wiring.
+    ///
+    /// ```rust
+    /// state.set_widget_enabled("cmd_fire", false); // locked
+    /// state.set_widget_enabled("cmd_fire", true);  // ready
+    /// ```
+    pub fn set_widget_enabled(&self, widget_id: &str, enabled: bool) {
+        self.channel_ctx.set_widget_enabled(widget_id, enabled);
+    }
+
     /// Returns `true` when at least one Modbus task is still alive.
     pub fn is_modbus_running(&self) -> bool {
         #[cfg(feature = "modbus")]

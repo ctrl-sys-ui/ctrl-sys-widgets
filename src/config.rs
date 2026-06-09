@@ -221,21 +221,36 @@ pub struct ScreenConfig {
 ///
 /// Uses serde's internally-tagged enum so JSON looks like:
 /// ```json
+/// { "type": "local", "channel": "app:my:value", ... }
 /// { "type": "epics-pva", "pv_name": "demo:double", ... }
 /// { "type": "modbus-tcp", "host": "127.0.0.1", "register": 1000, ... }
 /// ```
 /// Adding a new protocol = one new enum variant + struct, no changes to WidgetConfig.
 ///
 /// This enum is extensible because new protocols will be added over time,
-/// therefore is use will prevent match statments lacking a wildcard arm.
+/// therefore it will prevent match statments lacking a wildcard arm.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "kebab-case")]
 #[non_exhaustive]
 pub enum ProtocolConfig {
+    Local(LocalConfig),
     #[cfg(feature = "epics")]
     EpicsPva(EpicsPvaConfig),
     #[cfg(feature = "modbus")]
     ModbusTcp(ModbusTCPConfig),
+}
+
+/// In-process local channel configuration.
+///
+/// Local channels never send data on the network. Values are shared only inside
+/// the running mycela process and still flow through the normal SSE/IPC paths.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LocalConfig {
+    /// Logical local channel name (e.g. "app:temperature:setpoint").
+    pub channel: String,
+    /// Optional initial value used when the channel is first created.
+    #[serde(default)]
+    pub initial_value: Option<String>,
 }
 
 /// EPICS Process Variable Access channel configuration.
@@ -438,6 +453,7 @@ impl WidgetConfig {
     /// Returns a human-readable channel address for logging and the `data-ch` DOM attribute.
     pub fn channel_address(&self) -> String {
         match &self.protocol {
+            Some(ProtocolConfig::Local(l)) => format!("local://{}", l.channel),
             #[cfg(feature = "epics")]
             Some(ProtocolConfig::EpicsPva(e)) => e.pv_name.clone(),
             #[cfg(feature = "modbus")]
@@ -445,6 +461,14 @@ impl WidgetConfig {
                 format!("modbus-tcp://{}:{}/reg{}", m.host, m.port, m.register)
             }
             _ => String::new(),
+        }
+    }
+
+    /// Returns the `LocalConfig` if this widget uses the `local` protocol.
+    pub fn local(&self) -> Option<&LocalConfig> {
+        match &self.protocol {
+            Some(ProtocolConfig::Local(l)) => Some(l),
+            _ => None,
         }
     }
 

@@ -541,7 +541,14 @@ impl Chart {
         ctx: Arc<ChannelContext>,
         tx: tokio::sync::mpsc::UnboundedSender<String>,
     ) {
-        let mut stream = crate::channel::channel_stream(config.clone(), ctx);
+        let ctx_clone = ctx.clone();
+        let widget_id = config.id.clone();
+        let mut stream = crate::channel::channel_stream(config.clone(), ctx)
+            .inspect(move |e| {
+                if let ChannelEvent::Value(cv) = e {
+                    ctx_clone.publish_widget_value(&widget_id, cv.clone());
+                }
+            });
         while let Some(event) = stream.next().await {
             let html = match event {
                 ChannelEvent::Value(cv) => render_inner_connected(&config, &cv).into_string(),
@@ -569,6 +576,7 @@ fn build_chart_tooltip(config: &WidgetConfig, raw: &ChannelValue) -> String {
     let mut t = String::new();
 
     let protocol_label = match &config.protocol {
+        Some(ProtocolConfig::Local(_)) => "Local",
         #[cfg(feature = "epics")]
         Some(ProtocolConfig::EpicsPva(_)) => "EPICS PVA",
         #[cfg(feature = "modbus")]
@@ -656,10 +664,9 @@ fn build_chart_tooltip(config: &WidgetConfig, raw: &ChannelValue) -> String {
 
 /// Collect all PV names for a multi-series line chart (primary + extras from EpicsPva config).
 fn collect_series_pvs(config: &WidgetConfig) -> Vec<String> {
-    use crate::config::ProtocolConfig;
     match &config.protocol {
         #[cfg(feature = "epics")]
-        Some(ProtocolConfig::EpicsPva(e)) => e.series_pvs(),
+        Some(crate::config::ProtocolConfig::EpicsPva(e)) => e.series_pvs(),
         _ => Vec::new(),
     }
 }
@@ -787,15 +794,6 @@ fn render_chart_html(
 ) -> Markup {
     html! {
         div class="widget-inner" {
-            label class="widget-label" {
-                (config.label)
-                @if let Some(src) = icon {
-                    img class="widget-status-icon" src=(src) alt="status";
-                }
-                @if !tooltip.is_empty() {
-                    (super::render_info_btn(tooltip))
-                }
-            }
             div class="chart-container" {
                 @if !svg_content.is_empty() {
                     (PreEscaped(svg_content))
@@ -803,9 +801,13 @@ fn render_chart_html(
                     div class="chart-placeholder" { "Waiting for data…" }
                 }
             }
-            @if let Some(desc) = &config.description {
-                @if !desc.is_empty() {
-                    p class="widget-description" { (desc) }
+            label class="widget-label" {
+                (config.label)
+                @if let Some(src) = icon {
+                    img class="widget-status-icon" src=(src) alt="status";
+                }
+                @if !tooltip.is_empty() {
+                    (super::render_info_btn(tooltip))
                 }
             }
         }

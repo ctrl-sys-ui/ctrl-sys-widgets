@@ -6,7 +6,7 @@ use axum::Router;
 use tao::{
     dpi::LogicalSize,
     event::{Event, WindowEvent},
-    event_loop::{ControlFlow, EventLoop, EventLoopBuilder, EventLoopProxy},
+    event_loop::{ControlFlow, EventLoopBuilder, EventLoopProxy},
     window::WindowBuilder,
 };
 use tokio::task::JoinHandle;
@@ -73,6 +73,7 @@ type SpawnSubscriptionFn = Arc<
         + Sync,
 >;
 type StopSubscriptionFn = Arc<dyn Fn(Vec<JoinHandle<()>>) + Send + Sync>;
+type AppLogicFn = Arc<dyn Fn(AppState) + Send + Sync + 'static>;
 
 #[derive(Clone)]
 pub struct DesktopRuntimeHooks {
@@ -84,6 +85,10 @@ pub struct DesktopRuntimeHooks {
     pub spawn_widget_subscription: SpawnSubscriptionFn,
     pub stop_widget_subscription: StopSubscriptionFn,
     pub initial_path: String,
+    /// Optional application-logic callback, invoked once after the app state is
+    /// built, inside the Tokio runtime. Use `tokio::spawn` inside it to run
+    /// background tasks (e.g. safety interlocks that call `set_widget_enabled`).
+    pub app_logic: Option<AppLogicFn>,
 }
 
 impl DesktopRuntimeHooks {
@@ -115,7 +120,26 @@ impl DesktopRuntimeHooks {
             spawn_widget_subscription: Arc::new(spawn_widget_subscription),
             stop_widget_subscription: Arc::new(stop_widget_subscription),
             initial_path: initial_path.into(),
+            app_logic: None,
         }
+    }
+
+    /// Register an application-logic callback that runs once after the app
+    /// state is initialised, inside the Tokio runtime.
+    ///
+    /// Call `tokio::spawn` inside the closure to launch long-running background
+    /// tasks (safety interlocks, watchdogs, etc.) that have access to `AppState`
+    /// and can call `state.set_widget_enabled(...)`.
+    ///
+    /// ```rust
+    /// let hooks = build_hooks().with_app_logic(|state| {
+    ///     state.set_widget_enabled("cmd_fire", false);
+    ///     tokio::spawn(async move { /* monitor logic */ });
+    /// });
+    /// ```
+    pub fn with_app_logic(mut self, f: impl Fn(AppState) + Send + Sync + 'static) -> Self {
+        self.app_logic = Some(Arc::new(f));
+        self
     }
 }
 
@@ -196,6 +220,14 @@ fn spawn_ipc_backend(
         let runtime = tokio::runtime::Runtime::new().expect("tokio runtime");
         // Build state inside runtime context so startup hooks using tokio::spawn work in IPC mode.
         let state = runtime.block_on(async { (hooks.build_app_state)(config, None) });
+
+        // Run optional app-logic hook inside the runtime (gives access to tokio::spawn).
+        if let Some(logic) = &hooks.app_logic {
+            let logic = logic.clone();
+            let s = state.clone();
+            runtime.spawn(async move { (logic)(s); });
+        }
+
         let (event_tx, event_rx) = mpsc::channel::<IpcEvent>();
         let mut subscription_to_screen = HashMap::<String, String>::new();
         let mut screen_subscriptions = HashMap::<String, (usize, Vec<JoinHandle<()>>)>::new();
@@ -406,6 +438,14 @@ fn run_loopback_desktop(
 
         rt.block_on(async move {
             let state = (hooks.build_app_state)(config, Some(loopback_token));
+
+            // Run optional app-logic hook (gives access to tokio::spawn).
+            if let Some(logic) = &hooks.app_logic {
+                let logic = logic.clone();
+                let s = state.clone();
+                tokio::spawn(async move { (logic)(s); });
+            }
+
             let app = (hooks.build_loopback_router)(state);
 
             let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
