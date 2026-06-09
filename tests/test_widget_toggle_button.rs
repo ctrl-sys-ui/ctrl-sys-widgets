@@ -54,4 +54,26 @@ mod test_widget_toggle_button {
             "expected next_val=1 in: {html_off}"
         );
     }
+
+    #[test]
+    fn test_toggle_button_countdown_renders_for_on_state_with_reset_timeout() {
+        let cfg = WidgetConfig {
+            reset_timeout: Some(5000),
+            ..w()
+        };
+        let cv = ChannelValue { raw_value: 1.0, ..ChannelValue::default() };
+        let html = render_inner_connected(&cfg, &cv).into_string();
+        assert!(html.contains("widget-toggle-btn-countdown"));
+    }
+
+    #[test]
+    fn test_toggle_button_countdown_not_rendered_for_off_state() {
+        let cfg = WidgetConfig {
+            reset_timeout: Some(5000),
+            ..w()
+        };
+        let cv = ChannelValue { raw_value: 0.0, ..ChannelValue::default() };
+        let html = render_inner_connected(&cfg, &cv).into_string();
+        assert!(!html.contains("widget-toggle-btn-countdown"));
+    }
 }

@@ -97,6 +97,8 @@ pub enum IpcErrorCode {
     PayloadInvalid,
     StateConflict,
     InternalError,
+    /// The request timed out waiting for a channel value (EPICS monitor or Modbus poll).
+    Timeout,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

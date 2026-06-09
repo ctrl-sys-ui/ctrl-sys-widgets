@@ -40,21 +40,47 @@ impl Button {
         ctx: Arc<ChannelContext>,
         tx: tokio::sync::mpsc::UnboundedSender<String>,
     ) {
+        let mut enabled_rx = ctx.subscribe_widget_enabled(&config.id);
+        let ctx_clone = ctx.clone();
+        let widget_id = config.id.clone();
         let mut stream = crate::channel::channel_stream(config.clone(), ctx);
-        while let Some(event) = stream.next().await {
-            let html = match event {
-                ChannelEvent::Value(cv)          => render_inner_connected(&config, &cv).into_string(),
-                ChannelEvent::Disconnected(_)
-                | ChannelEvent::Error(_)         => render_inner_disconnected(&config).into_string(),
-                ChannelEvent::Connected          => continue,
-            };
-            if tx.send(html).is_err() { break; }
+        let mut last_cv: Option<ChannelValue> = None;
+
+        loop {
+            tokio::select! {
+                maybe_event = stream.next() => {
+                    let Some(event) = maybe_event else { break; };
+                    let html = match event {
+                        ChannelEvent::Value(cv) => {
+                            ctx_clone.publish_widget_value(&widget_id, cv.clone());
+                            let enabled = *enabled_rx.borrow();
+                            let html = render_inner_connected(&config, &cv, enabled).into_string();
+                            last_cv = Some(cv);
+                            html
+                        }
+                        ChannelEvent::Disconnected(_) | ChannelEvent::Error(_) => {
+                            last_cv = None;
+                            render_inner_disconnected(&config).into_string()
+                        }
+                        ChannelEvent::Connected => continue,
+                    };
+                    if tx.send(html).is_err() { break; }
+                }
+                Ok(()) = enabled_rx.changed() => {
+                    let enabled = *enabled_rx.borrow();
+                    let html = match &last_cv {
+                        Some(cv) => render_inner_connected(&config, cv, enabled).into_string(),
+                        None => render_inner_disconnected(&config).into_string(),
+                    };
+                    if tx.send(html).is_err() { break; }
+                }
+            }
         }
     }
 }
 
-pub fn render_inner_connected(config: &WidgetConfig, cv: &ChannelValue) -> Markup {
-    render_button_html(config, false, &super::build_tooltip(config, cv))
+pub fn render_inner_connected(config: &WidgetConfig, cv: &ChannelValue, enabled: bool) -> Markup {
+    render_button_html(config, !enabled, &super::build_tooltip(config, cv))
 }
 
 pub fn render_inner_disconnected(config: &WidgetConfig) -> Markup {

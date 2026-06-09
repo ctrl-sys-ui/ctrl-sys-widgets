@@ -936,6 +936,7 @@ input[type="number"] {
     font-size: 0.95rem;
     border-radius: 6px;
     transition: background 0.2s ease, box-shadow 0.2s ease, transform 0.1s ease;
+    position: relative;
 }
 .widget-toggle-btn--on {
     background: var(--alarm-none);
@@ -965,6 +966,18 @@ input[type="number"] {
 }
 .widget-toggle-btn--off:active {
     transform: translateY(0) scale(0.98);
+}
+.widget-toggle-btn-countdown {
+    position: absolute;
+    bottom: 2px;
+    right: 2px;
+    font-size: 0.7rem;
+    pointer-events: none;                      /* don't interfere with button clicks */
+    user-select: none;
+    text-transform: lowercase;
+}
+.widget-toggle-btn-label {
+    text-transform: uppercase;
 }
 
 /* Slider widget */

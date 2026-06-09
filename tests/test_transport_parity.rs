@@ -48,6 +48,7 @@ mod test_transport_parity {
             pv_server: Arc::new(Mutex::new(None)),
             config,
             channel_ctx,
+            #[cfg(feature = "modbus")]
             modbus_task: Arc::new(Mutex::new(None)),
             #[cfg(feature = "epics")]
             epics_start_hook: None,
@@ -93,9 +94,7 @@ mod test_transport_parity {
         let ipc_response = dispatch_request(&state, request, None).await;
 
         assert!(ipc_response.ok);
-        let ipc_html = ipc_response
-            .result
-            .expect("ipc result present")["html"]
+        let ipc_html = ipc_response.result.expect("ipc result present")["html"]
             .as_str()
             .expect("ipc html string")
             .to_string();

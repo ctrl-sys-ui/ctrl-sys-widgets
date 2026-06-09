@@ -9,6 +9,9 @@ pub mod desktop;
 pub mod ipc;
 pub mod ipc_dispatch;
 pub mod logging;
+// Declare all protocol backends here so `channel_stream` can route to them.
+// All protocols other than "local" should be behind feature flags so they can be optional dependencies.
+pub mod local_channel;
 #[cfg(feature = "epics")]
 pub mod epics_channel;
 #[cfg(feature = "modbus")]

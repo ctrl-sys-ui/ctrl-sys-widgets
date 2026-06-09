@@ -1,9 +1,9 @@
-use maud::{html, Markup, PreEscaped};
-use std::sync::Arc;
-use futures::StreamExt;
 use crate::channel::{ChannelContext, ChannelEvent, ChannelValue};
 use crate::config::WidgetConfig;
+use futures::StreamExt;
+use maud::{html, Markup, PreEscaped};
 use plotters::prelude::*;
+use std::sync::Arc;
 
 // ─── Chart colours (dark-theme friendly) ────────────────────────────────────
 
@@ -28,7 +28,9 @@ fn y_range(series: &[(&str, &[f64])]) -> (f64, f64) {
     let (y_min, y_max) = series
         .iter()
         .flat_map(|(_, d)| d.iter())
-        .fold((f64::INFINITY, f64::NEG_INFINITY), |(lo, hi), &v| (lo.min(v), hi.max(v)));
+        .fold((f64::INFINITY, f64::NEG_INFINITY), |(lo, hi), &v| {
+            (lo.min(v), hi.max(v))
+        });
     let margin = (y_max - y_min).abs() * 0.1 + 0.001;
     (y_min - margin, y_max + margin)
 }
@@ -38,11 +40,7 @@ fn x_max(series: &[(&str, &[f64])]) -> f64 {
 }
 
 /// Render multiple named line series with optional axis labels.
-fn render_line_chart(
-    series: &[(&str, &[f64])],
-    x_label: &str,
-    y_label: &str,
-) -> String {
+fn render_line_chart(series: &[(&str, &[f64])], x_label: &str, y_label: &str) -> String {
     let mut svg_buf = String::new();
 
     let n = series.len();
@@ -54,9 +52,9 @@ fn render_line_chart(
         // each showing the actual value scale for that series.
         const Y_COL_W: u32 = 56; // pixels per Y-axis column
         const N_TICKS: usize = 5;
-        let left_pad: u32    = Y_COL_W * n.max(1) as u32;
-        let top_pad:  u32    = 10;
-        let right_pad: u32   = 12;
+        let left_pad: u32 = Y_COL_W * n.max(1) as u32;
+        let top_pad: u32 = 10;
+        let right_pad: u32 = 12;
         let x_label_area: u32 = if x_label.is_empty() { 22 } else { 36 };
 
         {
@@ -65,13 +63,18 @@ fn render_line_chart(
             root.fill(&CHART_BG).ok();
 
             // Per-series actual value ranges (used for axis label annotation)
-            let ranges: Vec<(f64, f64)> = series.iter().map(|(_, data)| {
-                if data.is_empty() { return (0.0, 1.0); }
-                let lo = data.iter().cloned().fold(f64::INFINITY,     f64::min);
-                let hi = data.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
-                let m  = (hi - lo).abs() * 0.12 + 0.001;
-                (lo - m, hi + m)
-            }).collect();
+            let ranges: Vec<(f64, f64)> = series
+                .iter()
+                .map(|(_, data)| {
+                    if data.is_empty() {
+                        return (0.0, 1.0);
+                    }
+                    let lo = data.iter().cloned().fold(f64::INFINITY, f64::min);
+                    let hi = data.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
+                    let m = (hi - lo).abs() * 0.12 + 0.001;
+                    (lo - m, hi + m)
+                })
+                .collect();
 
             let xm = x_max(series).max(1.0);
 
@@ -93,20 +96,28 @@ fn render_line_chart(
                     .axis_style(CHART_GRID)
                     .label_style(("sans-serif", 10).into_font().color(&CHART_TEXT))
                     .x_label_formatter(&|v| format!("{:.0}", v));
-                if !x_label.is_empty() { mesh.x_desc(x_label); }
+                if !x_label.is_empty() {
+                    mesh.x_desc(x_label);
+                }
                 mesh.draw().ok();
             }
 
             // Draw each series normalised to 0..1
             for (idx, (_, data)) in series.iter().enumerate() {
-                if data.is_empty() { continue; }
+                if data.is_empty() {
+                    continue;
+                }
                 let color = SERIES_COLORS[idx % SERIES_COLORS.len()];
                 let (lo, hi) = ranges[idx];
                 let scale = (hi - lo).max(f64::EPSILON);
-                let pts: Vec<(f64, f64)> = data.iter().enumerate()
+                let pts: Vec<(f64, f64)> = data
+                    .iter()
+                    .enumerate()
                     .map(|(i, &y)| (i as f64, (y - lo) / scale))
                     .collect();
-                chart.draw_series(LineSeries::new(pts, color.stroke_width(2))).ok();
+                chart
+                    .draw_series(LineSeries::new(pts, color.stroke_width(2)))
+                    .ok();
             }
 
             // Compute plot-area pixel bounds from normalised data coordinates.
@@ -123,29 +134,37 @@ fn render_line_chart(
                 let scale = (hi - lo).max(f64::EPSILON);
 
                 let col_right = (left_pad as i32) - (idx as i32) * (Y_COL_W as i32);
-                let col_left  = col_right - Y_COL_W as i32;
+                let col_left = col_right - Y_COL_W as i32;
 
                 // Vertical axis line
                 root.draw(&PathElement::new(
                     vec![(col_right - 1, y_top), (col_right - 1, y_bot)],
                     color.stroke_width(1),
-                )).ok();
+                ))
+                .ok();
 
                 // Shortened display name — take the penultimate colon-segment
                 // e.g. "demo:pressure:sensor" → "pressure"
                 let parts: Vec<&str> = name.split(':').collect();
-                let disp = if parts.len() >= 2 { parts[parts.len() - 2] } else { name };
+                let disp = if parts.len() >= 2 {
+                    parts[parts.len() - 2]
+                } else {
+                    name
+                };
                 root.draw(&Text::new(
                     disp.to_string(),
                     (col_left + 2, y_top - 2),
                     ("sans-serif", 9).into_font().color(&color),
-                )).ok();
+                ))
+                .ok();
 
-                if data.is_empty() { continue; }
+                if data.is_empty() {
+                    continue;
+                }
 
                 // Tick marks and value labels
                 for t in 0..=N_TICKS {
-                    let norm   = t as f64 / N_TICKS as f64;
+                    let norm = t as f64 / N_TICKS as f64;
                     let actual = lo + norm * scale;
                     let (_, py) = chart.backend_coord(&(0.0, norm));
 
@@ -153,14 +172,16 @@ fn render_line_chart(
                     root.draw(&PathElement::new(
                         vec![(col_right - 6, py), (col_right - 1, py)],
                         color.stroke_width(1),
-                    )).ok();
+                    ))
+                    .ok();
 
                     // Value label, left-aligned inside column
                     root.draw(&Text::new(
                         format!("{:.1}", actual),
                         (col_left + 2, py - 6),
                         ("sans-serif", 9).into_font().color(&color),
-                    )).ok();
+                    ))
+                    .ok();
                 }
             }
 
@@ -171,8 +192,8 @@ fn render_line_chart(
 
     // ── Single-series: original rendering ───────────────────────────────────
     {
-        let root = SVGBackend::with_string(&mut svg_buf, (CHART_WIDTH, CHART_HEIGHT))
-            .into_drawing_area();
+        let root =
+            SVGBackend::with_string(&mut svg_buf, (CHART_WIDTH, CHART_HEIGHT)).into_drawing_area();
         root.fill(&CHART_BG).ok();
 
         let (y_lo, y_hi) = y_range(series);
@@ -197,14 +218,24 @@ fn render_line_chart(
             .label_style(("sans-serif", 11).into_font().color(&CHART_TEXT))
             .y_label_formatter(&|v| format!("{:.1}", v))
             .x_label_formatter(&|_| String::new());
-        if !x_label.is_empty() { mesh.x_desc(x_label); }
-        if !y_label.is_empty() { mesh.y_desc(y_label); }
+        if !x_label.is_empty() {
+            mesh.x_desc(x_label);
+        }
+        if !y_label.is_empty() {
+            mesh.y_desc(y_label);
+        }
         mesh.draw().ok();
 
         let color = SERIES_COLORS[0];
-        let pts: Vec<(f64, f64)> = series[0].1.iter().enumerate()
-            .map(|(i, &y)| (i as f64, y)).collect();
-        chart.draw_series(LineSeries::new(pts, color.stroke_width(2))).ok();
+        let pts: Vec<(f64, f64)> = series[0]
+            .1
+            .iter()
+            .enumerate()
+            .map(|(i, &y)| (i as f64, y))
+            .collect();
+        chart
+            .draw_series(LineSeries::new(pts, color.stroke_width(2)))
+            .ok();
 
         root.present().ok();
     }
@@ -212,18 +243,14 @@ fn render_line_chart(
 }
 
 /// Render a histogram (value distribution) from a data array.
-fn render_histogram(
-    data: &[f64],
-    x_label: &str,
-    y_label: &str,
-) -> String {
+fn render_histogram(data: &[f64], x_label: &str, y_label: &str) -> String {
     if data.is_empty() {
         return render_line_chart(&[], x_label, y_label);
     }
     let mut svg_buf = String::new();
     {
-        let root = SVGBackend::with_string(&mut svg_buf, (CHART_WIDTH, CHART_HEIGHT))
-            .into_drawing_area();
+        let root =
+            SVGBackend::with_string(&mut svg_buf, (CHART_WIDTH, CHART_HEIGHT)).into_drawing_area();
         root.fill(&CHART_BG).ok();
 
         let d_min = data.iter().cloned().fold(f64::INFINITY, f64::min);
@@ -246,7 +273,10 @@ fn render_histogram(
             .margin(8)
             .x_label_area_size(x_label_area)
             .y_label_area_size(y_label_area)
-            .build_cartesian_2d((d_min..d_max).step(range / NUM_BINS as f64), 0f64..max_count * 1.1)
+            .build_cartesian_2d(
+                (d_min..d_max).step(range / NUM_BINS as f64),
+                0f64..max_count * 1.1,
+            )
             .unwrap();
 
         let mut mesh = chart.configure_mesh();
@@ -258,20 +288,23 @@ fn render_histogram(
             .label_style(("sans-serif", 11).into_font().color(&CHART_TEXT))
             .y_label_formatter(&|v| format!("{:.0}", v))
             .x_label_formatter(&|v| format!("{:.1}", v));
-        if !x_label.is_empty() { mesh.x_desc(x_label); }
-        if !y_label.is_empty() { mesh.y_desc(y_label); }
+        if !x_label.is_empty() {
+            mesh.x_desc(x_label);
+        }
+        if !y_label.is_empty() {
+            mesh.y_desc(y_label);
+        }
         mesh.draw().ok();
 
         let bar_color = SERIES_COLORS[0].mix(0.75);
         let bin_width = range / NUM_BINS as f64;
-        chart.draw_series(bins.iter().enumerate().map(|(i, &count)| {
-            let x0 = d_min + i as f64 * bin_width;
-            let x1 = x0 + bin_width * 0.9;
-            Rectangle::new(
-                [(x0, 0f64), (x1, count as f64)],
-                bar_color.filled(),
-            )
-        })).ok();
+        chart
+            .draw_series(bins.iter().enumerate().map(|(i, &count)| {
+                let x0 = d_min + i as f64 * bin_width;
+                let x1 = x0 + bin_width * 0.9;
+                Rectangle::new([(x0, 0f64), (x1, count as f64)], bar_color.filled())
+            }))
+            .ok();
 
         root.present().ok();
     }
@@ -279,26 +312,27 @@ fn render_histogram(
 }
 
 /// Render a scatter plot. Requires two equal-length arrays (x, y).
-fn render_scatter(
-    x_data: &[f64],
-    y_data: &[f64],
-    x_label: &str,
-    y_label: &str,
-) -> String {
+fn render_scatter(x_data: &[f64], y_data: &[f64], x_label: &str, y_label: &str) -> String {
     if x_data.is_empty() || y_data.is_empty() {
         return render_line_chart(&[], x_label, y_label);
     }
     let n = x_data.len().min(y_data.len());
     let mut svg_buf = String::new();
     {
-        let root = SVGBackend::with_string(&mut svg_buf, (CHART_WIDTH, CHART_HEIGHT))
-            .into_drawing_area();
+        let root =
+            SVGBackend::with_string(&mut svg_buf, (CHART_WIDTH, CHART_HEIGHT)).into_drawing_area();
         root.fill(&CHART_BG).ok();
 
         let xmin = x_data[..n].iter().cloned().fold(f64::INFINITY, f64::min);
-        let xmax = x_data[..n].iter().cloned().fold(f64::NEG_INFINITY, f64::max);
+        let xmax = x_data[..n]
+            .iter()
+            .cloned()
+            .fold(f64::NEG_INFINITY, f64::max);
         let ymin = y_data[..n].iter().cloned().fold(f64::INFINITY, f64::min);
-        let ymax = y_data[..n].iter().cloned().fold(f64::NEG_INFINITY, f64::max);
+        let ymax = y_data[..n]
+            .iter()
+            .cloned()
+            .fold(f64::NEG_INFINITY, f64::max);
 
         let xm = (xmax - xmin).abs() * 0.05 + 0.001;
         let ym = (ymax - ymin).abs() * 0.05 + 0.001;
@@ -322,14 +356,23 @@ fn render_scatter(
             .label_style(("sans-serif", 11).into_font().color(&CHART_TEXT))
             .x_label_formatter(&|v| format!("{:.1}", v))
             .y_label_formatter(&|v| format!("{:.1}", v));
-        if !x_label.is_empty() { mesh.x_desc(x_label); }
-        if !y_label.is_empty() { mesh.y_desc(y_label); }
+        if !x_label.is_empty() {
+            mesh.x_desc(x_label);
+        }
+        if !y_label.is_empty() {
+            mesh.y_desc(y_label);
+        }
         mesh.draw().ok();
 
         let dot_color = SERIES_COLORS[1];
-        chart.draw_series(x_data[..n].iter().zip(y_data[..n].iter()).map(|(&x, &y)| {
-            Circle::new((x, y), 3, dot_color.filled())
-        })).ok();
+        chart
+            .draw_series(
+                x_data[..n]
+                    .iter()
+                    .zip(y_data[..n].iter())
+                    .map(|(&x, &y)| Circle::new((x, y), 3, dot_color.filled())),
+            )
+            .ok();
 
         root.present().ok();
     }
@@ -366,9 +409,15 @@ fn render_scatter_histogram(
 
         // --- scatter ---
         let xmin = x_data[..n].iter().cloned().fold(f64::INFINITY, f64::min);
-        let xmax = x_data[..n].iter().cloned().fold(f64::NEG_INFINITY, f64::max);
+        let xmax = x_data[..n]
+            .iter()
+            .cloned()
+            .fold(f64::NEG_INFINITY, f64::max);
         let ymin = y_data[..n].iter().cloned().fold(f64::INFINITY, f64::min);
-        let ymax = y_data[..n].iter().cloned().fold(f64::NEG_INFINITY, f64::max);
+        let ymax = y_data[..n]
+            .iter()
+            .cloned()
+            .fold(f64::NEG_INFINITY, f64::max);
         let xm = (xmax - xmin).abs() * 0.05 + 0.001;
         let ym = (ymax - ymin).abs() * 0.05 + 0.001;
 
@@ -388,11 +437,17 @@ fn render_scatter_histogram(
             .axis_style(CHART_GRID)
             .label_style(("sans-serif", 11).into_font().color(&CHART_TEXT))
             .y_label_formatter(&|v| format!("{:.1}", v));
-        if !y_label.is_empty() { mesh.y_desc(y_label); }
+        if !y_label.is_empty() {
+            mesh.y_desc(y_label);
+        }
         mesh.draw().ok();
-        sc.draw_series(x_data[..n].iter().zip(y_data[..n].iter()).map(|(&x, &y)| {
-            Circle::new((x, y), 3, SERIES_COLORS[1].filled())
-        })).ok();
+        sc.draw_series(
+            x_data[..n]
+                .iter()
+                .zip(y_data[..n].iter())
+                .map(|(&x, &y)| Circle::new((x, y), 3, SERIES_COLORS[1].filled())),
+        )
+        .ok();
 
         // --- x-histogram ---
         let range = (xmax - xmin).max(0.001);
@@ -413,7 +468,10 @@ fn render_scatter_histogram(
             .margin_bottom(6)
             .x_label_area_size(x_label_area)
             .y_label_area_size(0)
-            .build_cartesian_2d((xmin..xmax).step(range / NUM_BINS as f64), 0f64..max_count * 1.1)
+            .build_cartesian_2d(
+                (xmin..xmax).step(range / NUM_BINS as f64),
+                0f64..max_count * 1.1,
+            )
             .unwrap();
         let mut mesh = hc.configure_mesh();
         mesh.x_labels(5)
@@ -422,15 +480,21 @@ fn render_scatter_histogram(
             .axis_style(CHART_GRID)
             .label_style(("sans-serif", 11).into_font().color(&CHART_TEXT))
             .x_label_formatter(&|v| format!("{:.1}", v));
-        if !x_label.is_empty() { mesh.x_desc(x_label); }
+        if !x_label.is_empty() {
+            mesh.x_desc(x_label);
+        }
         mesh.draw().ok();
 
         let bin_width = range / NUM_BINS as f64;
         hc.draw_series(bins.iter().enumerate().map(|(i, &count)| {
             let x0 = xmin + i as f64 * bin_width;
             let x1 = x0 + bin_width * 0.9;
-            Rectangle::new([(x0, 0f64), (x1, count as f64)], SERIES_COLORS[0].mix(0.75).filled())
-        })).ok();
+            Rectangle::new(
+                [(x0, 0f64), (x1, count as f64)],
+                SERIES_COLORS[0].mix(0.75).filled(),
+            )
+        }))
+        .ok();
 
         root.present().ok();
     }
@@ -477,15 +541,25 @@ impl Chart {
         ctx: Arc<ChannelContext>,
         tx: tokio::sync::mpsc::UnboundedSender<String>,
     ) {
-        let mut stream = crate::channel::channel_stream(config.clone(), ctx);
+        let ctx_clone = ctx.clone();
+        let widget_id = config.id.clone();
+        let mut stream = crate::channel::channel_stream(config.clone(), ctx)
+            .inspect(move |e| {
+                if let ChannelEvent::Value(cv) = e {
+                    ctx_clone.publish_widget_value(&widget_id, cv.clone());
+                }
+            });
         while let Some(event) = stream.next().await {
             let html = match event {
-                ChannelEvent::Value(cv)          => render_inner_connected(&config, &cv).into_string(),
-                ChannelEvent::Disconnected(_)
-                | ChannelEvent::Error(_)         => render_inner_disconnected(&config).into_string(),
-                ChannelEvent::Connected          => continue,
+                ChannelEvent::Value(cv) => render_inner_connected(&config, &cv).into_string(),
+                ChannelEvent::Disconnected(_) | ChannelEvent::Error(_) => {
+                    render_inner_disconnected(&config).into_string()
+                }
+                ChannelEvent::Connected => continue,
             };
-            if tx.send(html).is_err() { break; }
+            if tx.send(html).is_err() {
+                break;
+            }
         }
     }
 }
@@ -502,27 +576,32 @@ fn build_chart_tooltip(config: &WidgetConfig, raw: &ChannelValue) -> String {
     let mut t = String::new();
 
     let protocol_label = match &config.protocol {
+        Some(ProtocolConfig::Local(_)) => "Local",
         #[cfg(feature = "epics")]
-        Some(ProtocolConfig::EpicsPva(_))  => "EPICS PVA",
+        Some(ProtocolConfig::EpicsPva(_)) => "EPICS PVA",
         #[cfg(feature = "modbus")]
         Some(ProtocolConfig::ModbusTcp(_)) => "Modbus TCP",
-        _                                  => "None",
+        _ => "None",
     };
     t.push_str(&format!("ID: {}\n", config.id));
     t.push_str(&format!("Protocol: {}\n", protocol_label));
 
     // Chart type line
     let type_str = match chart_type {
-        "histogram"         => "Histogram",
-        "scatter"           => "Scatter",
+        "histogram" => "Histogram",
+        "scatter" => "Scatter",
         "scatter_histogram" => "Scatter + Histogram",
-        _                   => "Line",
+        _ => "Line",
     };
     t.push_str(&format!("Chart type: {}\n", type_str));
 
     // Axis labels
-    if !x_label.is_empty() { t.push_str(&format!("X-axis: {}\n", x_label)); }
-    if !y_label.is_empty() { t.push_str(&format!("Y-axis: {}\n", y_label)); }
+    if !x_label.is_empty() {
+        t.push_str(&format!("X-axis: {}\n", x_label));
+    }
+    if !y_label.is_empty() {
+        t.push_str(&format!("Y-axis: {}\n", y_label));
+    }
 
     t.push('\n');
 
@@ -565,7 +644,10 @@ fn build_chart_tooltip(config: &WidgetConfig, raw: &ChannelValue) -> String {
         t.push_str(&format!("Units: {}\n", raw.units));
     }
     if raw.display_low != 0.0 || raw.display_high != 0.0 {
-        t.push_str(&format!("Display range: {:.2} – {:.2}\n", raw.display_low, raw.display_high));
+        t.push_str(&format!(
+            "Display range: {:.2} – {:.2}\n",
+            raw.display_low, raw.display_high
+        ));
     }
 
     let sev_str = match raw.alarm_severity {
@@ -582,10 +664,9 @@ fn build_chart_tooltip(config: &WidgetConfig, raw: &ChannelValue) -> String {
 
 /// Collect all PV names for a multi-series line chart (primary + extras from EpicsPva config).
 fn collect_series_pvs(config: &WidgetConfig) -> Vec<String> {
-    use crate::config::ProtocolConfig;
     match &config.protocol {
         #[cfg(feature = "epics")]
-        Some(ProtocolConfig::EpicsPva(e)) => e.series_pvs(),
+        Some(crate::config::ProtocolConfig::EpicsPva(e)) => e.series_pvs(),
         _ => Vec::new(),
     }
 }
@@ -604,28 +685,54 @@ pub fn render_inner_connected(config: &WidgetConfig, cv: &ChannelValue) -> Marku
         let x_label = config.axis_label_x.as_deref().unwrap_or("");
         let y_label = config.axis_label_y.as_deref().unwrap_or("");
         let all_pvs = collect_series_pvs(config);
-        let series_vecs: Vec<(&str, Vec<f64>)> = all_pvs.iter()
-            .filter_map(|pv| cv.named_series.get(pv).map(|v| (pv.as_str(), v.clone())))
+        let series_vecs: Vec<(&str, Vec<f64>)> = all_pvs
+            .iter()
+            .filter_map(|pv| {
+                cv.named_series
+                    .iter()
+                    .find(|(n, _)| n == pv)
+                    .map(|(_, v)| (pv.as_str(), v.clone()))
+            })
             .collect();
-        let series_refs: Vec<(&str, &[f64])> = series_vecs.iter()
+        let series_refs: Vec<(&str, &[f64])> = series_vecs
+            .iter()
             .map(|(n, v)| (*n, v.as_slice()))
             .collect();
         let svg_string = render_line_chart(&series_refs, x_label, y_label);
         let mut t = format!("Chart type: Line\n");
-        if !x_label.is_empty() { t.push_str(&format!("X-axis: {}\n", x_label)); }
-        if !y_label.is_empty() { t.push_str(&format!("Y-axis: {}\n", y_label)); }
+        if !x_label.is_empty() {
+            t.push_str(&format!("X-axis: {}\n", x_label));
+        }
+        if !y_label.is_empty() {
+            t.push_str(&format!("Y-axis: {}\n", y_label));
+        }
         t.push('\n');
         for (idx, pv) in all_pvs.iter().enumerate() {
             t.push_str(&format!("Series {}: {}\n", idx + 1, pv));
         }
         t.push('\n');
         let meta = &cv.primary_meta;
-        if !meta.description.is_empty() { t.push_str(&format!("{0}\n", meta.description)); }
-        if !cv.units.is_empty() { t.push_str(&format!("Units: {}\n", cv.units)); }
-        let sev_str = match cv.alarm_severity { 0 => "No Alarm", 1 => "Minor", 2 => "Major", _ => "Invalid" };
+        if !meta.description.is_empty() {
+            t.push_str(&format!("{0}\n", meta.description));
+        }
+        if !cv.units.is_empty() {
+            t.push_str(&format!("Units: {}\n", cv.units));
+        }
+        let sev_str = match cv.alarm_severity {
+            0 => "No Alarm",
+            1 => "Minor",
+            2 => "Major",
+            _ => "Invalid",
+        };
         t.push_str(&format!("Alarm: {}\n", sev_str));
-        return render_chart_html(config, None, &format!("chart {}", alarm_class), icon,
-                                  t.trim_end(), &svg_string);
+        return render_chart_html(
+            config,
+            None,
+            &format!("chart {}", alarm_class),
+            icon,
+            t.trim_end(),
+            &svg_string,
+        );
     }
 
     let chart_type = config.chart_type.as_deref().unwrap_or("line");
@@ -656,13 +763,25 @@ pub fn render_inner_connected(config: &WidgetConfig, cv: &ChannelValue) -> Marku
     };
 
     let tooltip = build_chart_tooltip(config, cv);
-    render_chart_html(config, None, &format!("chart {}", alarm_class), icon, &tooltip, &svg_string)
+    render_chart_html(
+        config,
+        None,
+        &format!("chart {}", alarm_class),
+        icon,
+        &tooltip,
+        &svg_string,
+    )
 }
 
-
-
 pub fn render_inner_disconnected(config: &WidgetConfig) -> Markup {
-    render_chart_html(config, None, "chart alarm-disconnected", Some(super::OFFLINE_SVG), "", "")
+    render_chart_html(
+        config,
+        None,
+        "chart alarm-disconnected",
+        Some(super::OFFLINE_SVG),
+        "",
+        "",
+    )
 }
 
 fn render_chart_html(
@@ -675,15 +794,6 @@ fn render_chart_html(
 ) -> Markup {
     html! {
         div class="widget-inner" {
-            label class="widget-label" {
-                (config.label)
-                @if let Some(src) = icon {
-                    img class="widget-status-icon" src=(src) alt="status";
-                }
-                @if !tooltip.is_empty() {
-                    (super::render_info_btn(tooltip))
-                }
-            }
             div class="chart-container" {
                 @if !svg_content.is_empty() {
                     (PreEscaped(svg_content))
@@ -691,9 +801,13 @@ fn render_chart_html(
                     div class="chart-placeholder" { "Waiting for data…" }
                 }
             }
-            @if let Some(desc) = &config.description {
-                @if !desc.is_empty() {
-                    p class="widget-description" { (desc) }
+            label class="widget-label" {
+                (config.label)
+                @if let Some(src) = icon {
+                    img class="widget-status-icon" src=(src) alt="status";
+                }
+                @if !tooltip.is_empty() {
+                    (super::render_info_btn(tooltip))
                 }
             }
         }
@@ -710,4 +824,3 @@ pub fn render_chart(widget: &WidgetConfig) -> Markup {
         }
     }
 }
-
