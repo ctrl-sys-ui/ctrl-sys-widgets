@@ -98,6 +98,7 @@ pub fn render_inner_connected(config: &WidgetConfig, cv: &ChannelValue) -> Marku
                             option value=(current_index) selected { (current_index) }
                         }
                     }
+                    span class="status" {}
                     span class="select-display-text" { (display_text) }
                 }
             }
