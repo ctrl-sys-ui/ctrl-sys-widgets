@@ -51,10 +51,10 @@ impl Select {
         let mut last_html = String::new();
         while let Some(event) = stream.next().await {
             let html = match event {
-                ChannelEvent::Value(cv)          => render_inner_connected(&config, &cv).into_string(),
+                ChannelEvent::Value(cv)         => render_inner_connected(&config, &cv).into_string(),
                 ChannelEvent::Disconnected(_)
-                | ChannelEvent::Error(_)         => render_inner_disconnected(&config).into_string(),
-                ChannelEvent::Connected          => continue,
+                | ChannelEvent::Error(_)        => render_inner_disconnected(&config).into_string(),
+                ChannelEvent::Connected         => continue,
             };
             if html != last_html {
                 last_html = html.clone();

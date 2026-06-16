@@ -126,6 +126,51 @@ impl AppState {
             .route("/stream/widget/{widget_id}", get(stream_widget))
             .route("/api/widget/{widget_id}/set", post(write_widget))
     }
+
+    /// Force a value of a widget by ID.
+    ///
+    /// The change propagates overriding the UI. 
+    /// This can be used to programmatically set a widget value from app logic.
+    /// 
+    /// Sometimes can be useful to reset a previously set value like a cancelling a button press or resetting a toggle button.
+    /// 
+    /// This can only be used for widgets that have a `write` protocol configured, otherwise it will have no effect.
+    /// ```rust
+    /// state.force_widget_value("cmd_arm", 0.0); // force the "cmd_arm" button to its default state
+    /// ```
+    pub fn force_widget_value(&self, widget_id: &str, value: f64) {
+        // Look up the widget config. Use collect_data_widgets so Group children are included.
+        let widget = self
+            .config
+            .screens
+            .iter()
+            .flat_map(|s| widgets::collect_data_widgets(&s.widgets))
+            .find(|w| w.id == widget_id);
+
+        match widget {
+            None => {
+                tracing::warn!("Widget '{}' not found in config, cannot force value", widget_id);
+            }
+            Some(w) => match w.widget_type {
+                WidgetType::Button | WidgetType::ToggleButton | WidgetType::Slider | WidgetType::Select => {
+                    let value_str = match w.widget_type {
+                        WidgetType::Button | WidgetType::ToggleButton | WidgetType::Select => {
+                            format!("{}", value.trunc() as i64)
+                        }
+                        _ => format!("{}", value),
+                    };
+                    let ctx = self.channel_ctx.clone();
+                    tracing::info!("Widget '{}' force-writing value {}", w.id, value);
+                    tokio::spawn(async move {
+                        widgets::write_channel(w, value_str, ctx).await;
+                    });
+                }
+                _ => {
+                    tracing::warn!("Widget '{}' is not a writable type, cannot force value", widget_id);
+                }
+            },
+        }
+    }
 }
 
 // --- SSE type alias ----------------------------------------------------------

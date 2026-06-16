@@ -45,6 +45,18 @@ impl Button {
         let widget_id = config.id.clone();
         let mut stream = crate::channel::channel_stream(config.clone(), ctx);
         let mut last_cv: Option<ChannelValue> = None;
+        let mut last_html = String::new();
+
+        let send_if_changed = |tx: &tokio::sync::mpsc::UnboundedSender<String>,
+                               last_html: &mut String,
+                               html: String| {
+            if *last_html != html {
+                *last_html = html.clone();
+                tx.send(html).is_ok()
+            } else {
+                true
+            }
+        };
 
         loop {
             tokio::select! {
@@ -64,7 +76,7 @@ impl Button {
                         }
                         ChannelEvent::Connected => continue,
                     };
-                    if tx.send(html).is_err() { break; }
+                    if !send_if_changed(&tx, &mut last_html, html) { break; }
                 }
                 Ok(()) = enabled_rx.changed() => {
                     let enabled = *enabled_rx.borrow();
@@ -72,7 +84,7 @@ impl Button {
                         Some(cv) => render_inner_connected(&config, cv, enabled).into_string(),
                         None => render_inner_disconnected(&config).into_string(),
                     };
-                    if tx.send(html).is_err() { break; }
+                    if !send_if_changed(&tx, &mut last_html, html) { break; }
                 }
             }
         }

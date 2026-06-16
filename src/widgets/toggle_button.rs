@@ -164,21 +164,37 @@ impl ToggleButton {
         let mut stream = crate::channel::channel_stream(config.clone(), ctx.clone());
         let mut countdown_end: Option<Instant> = None;
         let mut last_value: Option<ChannelValue> = None;
+        let mut last_html = String::new();
+
+        let send_if_changed = |tx: &tokio::sync::mpsc::UnboundedSender<String>,
+                               last_html: &mut String,
+                               html: String| {
+            if *last_html != html {
+                *last_html = html.clone();
+                tx.send(html).is_ok()
+            } else {
+                true
+            }
+        };
 
         loop {
             let next_tick = countdown_end.map(|_| Instant::now() + Duration::from_secs(1));
 
-            match Self::next_channel_event(&mut stream, next_tick, &mut enabled_rx).await {
+            match Self::next_channel_event(
+                &mut stream,
+                next_tick,
+                &mut enabled_rx,
+            )
+            .await
+            {
                 NextEvent::Channel(None) => break,
                 NextEvent::Channel(Some(ChannelEvent::Connected)) => continue,
                 NextEvent::Channel(Some(ChannelEvent::Disconnected(_)))
                 | NextEvent::Channel(Some(ChannelEvent::Error(_))) => {
                     countdown_end = None;
                     last_value = None;
-                    if tx
-                        .send(render_inner_disconnected(&config).into_string())
-                        .is_err()
-                    {
+                    let html = render_inner_disconnected(&config).into_string();
+                    if !send_if_changed(&tx, &mut last_html, html) {
                         break;
                     }
                 }
@@ -203,13 +219,9 @@ impl ToggleButton {
 
                     let enabled = *enabled_rx.borrow();
                     last_value = Some(cv.clone());
-                    if tx
-                        .send(
-                            render_inner_connected_with_countdown(&config, &cv, countdown_secs, enabled)
-                                .into_string(),
-                        )
-                        .is_err()
-                    {
+                    let html = render_inner_connected_with_countdown(&config, &cv, countdown_secs, enabled)
+                        .into_string();
+                    if !send_if_changed(&tx, &mut last_html, html) {
                         break;
                     }
                 }
@@ -225,7 +237,7 @@ impl ToggleButton {
                         }
                         None => render_inner_disconnected(&config).into_string(),
                     };
-                    if tx.send(html).is_err() { break; }
+                    if !send_if_changed(&tx, &mut last_html, html) { break; }
                 }
                 NextEvent::Tick => {
                     if let (Some(end), Some(cv)) = (countdown_end, last_value.as_ref()) {
@@ -258,14 +270,17 @@ impl ToggleButton {
                             // Don't push an SSE update here; wait for the channel to echo
                             // back the written value so the button transitions directly
                             // from the last countdown tick to OFF with no "pressed" flash.
-                        } else if tx
-                            .send(
-                                render_inner_connected_with_countdown(&config, cv, countdown_secs, *enabled_rx.borrow())
-                                    .into_string(),
+                        } else {
+                            let html = render_inner_connected_with_countdown(
+                                &config,
+                                cv,
+                                countdown_secs,
+                                *enabled_rx.borrow(),
                             )
-                            .is_err()
-                        {
+                            .into_string();
+                            if !send_if_changed(&tx, &mut last_html, html) {
                             break;
+                            }
                         }
                     }
                 }

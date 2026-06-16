@@ -626,6 +626,23 @@ input[type="number"] {
     font-size: 1.2rem;
 }
 
+.write-ok {
+    color: var(--alarm-none);
+    animation: write-ok-fade 1.4s ease forwards;
+}
+
+@keyframes write-ok-fade {
+    0% {
+        opacity: 1;
+    }
+    70% {
+        opacity: 1;
+    }
+    100% {
+        opacity: 0;
+    }
+}
+
 .success {
     color: var(--alarm-none);
 }
