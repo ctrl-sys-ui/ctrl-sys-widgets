@@ -110,6 +110,8 @@ pub struct ChannelContext {
     pub epics_ctx: Arc<std::sync::Mutex<pvxs_sys::Context>>,
     #[cfg(feature = "modbus")]
     pub modbus_pool: Arc<crate::modbus_client::ModbusPool>,
+    #[cfg(feature = "modbus-server")]
+    pub modbus_bridge: Arc<crate::modbus_bridge::ModbusBridgeContext>,
     /// Per-widget enabled/disabled state bus. `true` = enabled (default).
     pub widget_enabled: DashMap<String, watch::Sender<bool>>,
     /// Per-widget latest-value bus, for app-logic subscriptions.
@@ -171,6 +173,8 @@ impl ChannelContext {
             local_store: crate::local_channel::LocalStore::new(),
             epics_ctx,
             modbus_pool,
+            #[cfg(feature = "modbus-server")]
+            modbus_bridge: crate::modbus_bridge::ModbusBridgeContext::new(),
             widget_enabled: DashMap::new(),
             widget_value_bus: DashMap::new(),
         })
@@ -191,6 +195,8 @@ impl ChannelContext {
         Arc::new(Self {
             local_store: crate::local_channel::LocalStore::new(),
             modbus_pool,
+            #[cfg(feature = "modbus-server")]
+            modbus_bridge: crate::modbus_bridge::ModbusBridgeContext::new(),
             widget_enabled: DashMap::new(),
             widget_value_bus: DashMap::new(),
         })

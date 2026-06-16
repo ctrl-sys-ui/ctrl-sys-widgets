@@ -26,6 +26,28 @@ fn now_millis() -> i64 {
         .as_millis() as i64
 }
 
+#[cfg(feature = "modbus")]
+fn maybe_start_modbus_runtime(state: &AppState) {
+    if !state.config.startup.modbus_bridge.enabled {
+        return;
+    }
+    if state.modbus_start_hook.is_none() {
+        tracing::warn!(
+            "Modbus bridge is enabled in config but no modbus_start_hook is configured"
+        );
+        return;
+    }
+
+    match crate::protocol_control::start_modbus_runtime(state) {
+        Ok(()) => tracing::info!("Modbus runtime started from desktop startup"),
+        Err(crate::protocol_control::ProtocolControlError::AlreadyRunning(_)) => {}
+        Err(e) => tracing::error!("Failed to start Modbus runtime: {}", e),
+    }
+}
+
+#[cfg(not(feature = "modbus"))]
+fn maybe_start_modbus_runtime(_state: &AppState) {}
+
 enum DesktopUserEvent {
     IpcMessage(String),
     IpcEvent(IpcEvent),
@@ -220,6 +242,7 @@ fn spawn_ipc_backend(
         let runtime = tokio::runtime::Runtime::new().expect("tokio runtime");
         // Build state inside runtime context so startup hooks using tokio::spawn work in IPC mode.
         let state = runtime.block_on(async { (hooks.build_app_state)(config, None) });
+        maybe_start_modbus_runtime(&state);
 
         // Run optional app-logic hook inside the runtime (gives access to tokio::spawn).
         if let Some(logic) = &hooks.app_logic {
@@ -438,6 +461,7 @@ fn run_loopback_desktop(
 
         rt.block_on(async move {
             let state = (hooks.build_app_state)(config, Some(loopback_token));
+            maybe_start_modbus_runtime(&state);
 
             // Run optional app-logic hook (gives access to tokio::spawn).
             if let Some(logic) = &hooks.app_logic {

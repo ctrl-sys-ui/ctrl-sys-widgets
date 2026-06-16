@@ -110,11 +110,11 @@ where
     tokio::spawn(async move {
         let listener = match TcpListener::bind(addr).await {
             Ok(l) => {
-                tracing::info!("Modbus TCP server listening on {addr}");
+                tracing::info!("[modbus-server] listening on {addr}");
                 l
             }
             Err(e) => {
-                tracing::error!("Failed to bind Modbus TCP server on {addr}: {e}");
+                tracing::error!("[modbus-server] failed to bind on {addr}: {e}");
                 return;
             }
         };
@@ -133,12 +133,12 @@ where
 
         let result = server
             .serve(&on_connected, |err| {
-                tracing::error!("Modbus server connection error: {err}");
+                tracing::error!("[modbus-server] connection error: {err}");
             })
             .await;
 
         if let Err(e) = result {
-            tracing::error!("Modbus TCP server stopped with error: {e}");
+            tracing::error!("[modbus-server] stopped with error: {e}");
         }
     })
 }

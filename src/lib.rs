@@ -18,6 +18,8 @@ pub mod epics_channel;
 pub mod modbus_client;
 #[cfg(feature = "modbus-server")]
 pub mod modbus_server;
+#[cfg(feature = "modbus-server")]
+pub mod modbus_bridge;
 pub mod protocol_control;
 #[cfg(feature = "epics")]
 pub mod server_setup;
