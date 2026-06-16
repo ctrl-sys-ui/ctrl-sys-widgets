@@ -174,6 +174,8 @@ pub struct ModbusBridgeUpstreamConfig {
 pub struct ModbusBridgeRegisterMap {
     pub exposed_register: u16,
     pub register_type: ModbusRegisterType,
+    #[serde(default = "default_word_count")]
+    pub word_count: u8,
     #[serde(default)]
     pub source_widget_id: Option<String>,
     #[serde(default)]
@@ -194,6 +196,35 @@ pub struct WidgetServerConfig {
     pub access: ModbusBridgeAccessMode,
     #[serde(default)]
     pub target_upstream_register: Option<u16>,
+    /// Optional bridge-side protocol declaration.
+    ///
+    /// Required when widget protocol is not `modbus-tcp` (for example `local`) so
+    /// bridge register packing can be defined explicitly.
+    #[serde(default)]
+    pub protocol: Option<WidgetServerProtocolConfig>,
+}
+
+#[cfg(feature = "modbus")]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "type", rename_all = "kebab-case")]
+pub enum WidgetServerProtocolConfig {
+    ModbusTcp(WidgetServerModbusTcpConfig),
+    #[cfg(feature = "epics")]
+    EpicsPva(WidgetServerEpicsPvaConfig),
+}
+
+#[cfg(feature = "modbus")]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WidgetServerModbusTcpConfig {
+    pub register_type: ModbusRegisterType,
+    #[serde(default = "default_word_count")]
+    pub word_count: u8,
+}
+
+#[cfg(all(feature = "modbus", feature = "epics"))]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WidgetServerEpicsPvaConfig {
+    pub pv_name: String,
 }
 
 #[cfg(feature = "modbus")]
@@ -202,7 +233,7 @@ pub struct WidgetServerConfig {
 pub enum ModbusBridgeAccessMode {
     #[default]
     ReadOnly,
-    WriteThrough,
+    ReadWrite,
 }
 
 #[cfg(feature = "modbus")]
@@ -321,18 +352,25 @@ impl AppConfig {
                 )));
             }
 
-            if m.access == ModbusBridgeAccessMode::WriteThrough
-                && m.target_upstream_register.is_none()
-            {
+            if m.word_count == 0 {
                 return Err(ConfigError::ValidationError(format!(
-                    "Invalid startup.modbus_bridge mapping for register {}: target_upstream_register is required for write_through access",
+                    "Invalid startup.modbus_bridge mapping for register {}: word_count must be >= 1",
                     m.exposed_register
                 )));
             }
 
-            if m.access == ModbusBridgeAccessMode::WriteThrough && bridge.upstream.is_none() {
+            if m.access == ModbusBridgeAccessMode::ReadWrite
+                && m.target_upstream_register.is_none()
+            {
                 return Err(ConfigError::ValidationError(format!(
-                    "Invalid startup.modbus_bridge mapping for register {}: upstream config is required for write_through access",
+                    "Invalid startup.modbus_bridge mapping for register {}: target_upstream_register is required for read_write access",
+                    m.exposed_register
+                )));
+            }
+
+            if m.access == ModbusBridgeAccessMode::ReadWrite && bridge.upstream.is_none() {
+                return Err(ConfigError::ValidationError(format!(
+                    "Invalid startup.modbus_bridge mapping for register {}: upstream config is required for read_write access",
                     m.exposed_register
                 )));
             }
@@ -374,16 +412,20 @@ impl AppConfig {
                 }
 
                 if widget.modbus_tcp().is_none() {
-                    return Err(ConfigError::ValidationError(format!(
-                        "Widget '{}' has server.proxy_register but is not configured for modbus-tcp",
-                        widget.id
-                    )));
+                    let is_local = matches!(widget.protocol, Some(ProtocolConfig::Local(_)));
+                    let has_server_protocol = server.protocol.is_some();
+                    if !is_local || !has_server_protocol {
+                        return Err(ConfigError::ValidationError(format!(
+                            "Widget '{}' has server.proxy_register but no bridge protocol format. For local widgets, set server.protocol={{\"type\":\"modbus-tcp\",...}} or server.protocol={{\"type\":\"epics-pva\",...}}",
+                            widget.id
+                        )));
+                    }
                 }
 
-                if server.access == ModbusBridgeAccessMode::WriteThrough && bridge.upstream.is_none()
+                if server.access == ModbusBridgeAccessMode::ReadWrite && bridge.upstream.is_none()
                 {
                     return Err(ConfigError::ValidationError(format!(
-                        "Widget '{}' has write_through server.proxy_register but startup.modbus_bridge.upstream is missing",
+                        "Widget '{}' has read_write server.proxy_register but startup.modbus_bridge.upstream is missing",
                         widget.id
                     )));
                 }

@@ -10,8 +10,8 @@ use tokio_modbus::prelude::ExceptionCode;
 
 use crate::app::AppState;
 use crate::config::{
-    ModbusBridgeAccessMode, ModbusBridgeRegisterMap, ModbusRegisterType,
-    ProtocolConfig,
+    ModbusBridgeAccessMode, ModbusBridgeRegisterMap, ModbusRegisterType, ProtocolConfig,
+    WidgetServerProtocolConfig,
 };
 use crate::modbus_server::{new_register_bank, start_modbus_server, RegisterBank};
 use crate::protocol_control::ProtocolControlError;
@@ -53,29 +53,63 @@ fn collect_widget_proxy_mappings(state: &AppState) -> Vec<ModbusBridgeRegisterMa
             let Some(server) = widget.server.clone() else {
                 continue;
             };
-            let Some(ProtocolConfig::ModbusTcp(modbus)) = widget.protocol.clone() else {
-                continue;
-            };
+            match widget.protocol.clone() {
+                Some(ProtocolConfig::ModbusTcp(modbus)) => {
+                    mappings.push(ModbusBridgeRegisterMap {
+                        exposed_register: server.proxy_register,
+                        register_type: modbus.register_type.clone(),
+                        word_count: modbus.word_count.max(1),
+                        source_widget_id: Some(widget.id.clone()),
+                        source_upstream_register: Some(modbus.register),
+                        source_upstream_register_type: Some(modbus.register_type.clone()),
+                        target_upstream_register: server
+                            .target_upstream_register
+                            .or(Some(modbus.register)),
+                        access: server.access,
+                    });
+                }
+                Some(ProtocolConfig::Local(_)) => {
+                    let Some(WidgetServerProtocolConfig::ModbusTcp(server_modbus)) =
+                        server.protocol.clone()
+                    else {
+                        continue;
+                    };
 
-            mappings.push(ModbusBridgeRegisterMap {
-                exposed_register: server.proxy_register,
-                register_type: modbus.register_type.clone(),
-                source_widget_id: Some(widget.id.clone()),
-                source_upstream_register: Some(modbus.register),
-                source_upstream_register_type: Some(modbus.register_type.clone()),
-                target_upstream_register: server.target_upstream_register.or(Some(modbus.register)),
-                access: server.access,
-            });
+                    mappings.push(ModbusBridgeRegisterMap {
+                        exposed_register: server.proxy_register,
+                        register_type: server_modbus.register_type.clone(),
+                        word_count: server_modbus.word_count.max(1),
+                        source_widget_id: Some(widget.id.clone()),
+                        source_upstream_register: None,
+                        source_upstream_register_type: None,
+                        target_upstream_register: server.target_upstream_register,
+                        access: server.access,
+                    });
+                }
+                _ => {}
+            }
         }
     }
     mappings
 }
 
-fn encode_widget_value_to_u16(raw: f64) -> u16 {
+fn encode_widget_value_to_words(raw: f64, register_type: &ModbusRegisterType, word_count: u8) -> Vec<u16> {
+    let wc = word_count.max(1);
     if !raw.is_finite() {
-        return 0;
+        return vec![0; wc as usize];
     }
-    raw.round().clamp(0.0, u16::MAX as f64) as u16
+
+    if wc == 1 || matches!(register_type, ModbusRegisterType::Coil | ModbusRegisterType::DiscreteInput) {
+        return vec![raw.round().clamp(0.0, u16::MAX as f64) as u16];
+    }
+
+    // For two-word scalar values, expose big-endian IEEE754 f32 words.
+    if wc == 2 {
+        let bits = (raw as f32).to_bits();
+        return vec![(bits >> 16) as u16, (bits & 0xFFFF) as u16];
+    }
+
+    vec![raw.round().clamp(0.0, u16::MAX as f64) as u16]
 }
 
 pub fn start_bridge_runtime(state: &AppState) -> Result<Vec<JoinHandle<()>>, ProtocolControlError> {
@@ -99,7 +133,7 @@ pub fn start_bridge_runtime(state: &AppState) -> Result<Vec<JoinHandle<()>>, Pro
 
     let mut writable = HashMap::<u16, ModbusBridgeRegisterMap>::new();
     for m in &mappings {
-        if m.access == ModbusBridgeAccessMode::WriteThrough {
+        if m.access == ModbusBridgeAccessMode::ReadWrite {
             writable.insert(m.exposed_register, m.clone());
         }
     }
@@ -134,7 +168,11 @@ pub fn start_bridge_runtime(state: &AppState) -> Result<Vec<JoinHandle<()>>, Pro
                 .get_or_create(&upstream.host, upstream.port, upstream.unit_id);
 
             let result = handle
-                .write(target_register, req.mapping.register_type.clone(), vec![value])
+                .write(
+                    target_register,
+                    req.mapping.register_type.clone(),
+                    vec![value],
+                )
                 .await;
             match result {
                 Ok(()) => {
@@ -219,8 +257,12 @@ pub fn start_bridge_runtime(state: &AppState) -> Result<Vec<JoinHandle<()>>, Pro
                         break;
                     }
                     let raw = rx.borrow().raw_value;
-                    let encoded = encode_widget_value_to_u16(raw);
-                    ctx.modbus_bridge.register_bank.insert(exposed, encoded);
+                    let encoded =
+                        encode_widget_value_to_words(raw, &mapping.register_type, mapping.word_count);
+                    for (offset, word) in encoded.into_iter().enumerate() {
+                        let addr = exposed.saturating_add(offset as u16);
+                        ctx.modbus_bridge.register_bank.insert(addr, word);
+                    }
                 }
             }));
         } else if let Some(source_register) = mapping.source_upstream_register {
@@ -238,11 +280,15 @@ pub fn start_bridge_runtime(state: &AppState) -> Result<Vec<JoinHandle<()>>, Pro
                     let device =
                         ctx.modbus_pool
                             .get_or_create(&upstream.host, upstream.port, upstream.unit_id);
-                    let read = device.read(source_register, register_type.clone(), 1).await;
+                    let read = device
+                        .read(source_register, register_type.clone(), mapping.word_count.max(1))
+                        .await;
                     match read {
                         Ok(words) => {
-                            let value = words.first().copied().unwrap_or_default();
-                            ctx.modbus_bridge.register_bank.insert(exposed, value);
+                            for (offset, word) in words.iter().copied().enumerate() {
+                                let addr = exposed.saturating_add(offset as u16);
+                                ctx.modbus_bridge.register_bank.insert(addr, word);
+                            }
                         }
                         Err(e) => {
                             tracing::warn!(
