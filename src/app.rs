@@ -445,20 +445,17 @@ pub async fn stream_widget(
         WidgetType::Led => Box::pin(widgets::led::Led::new(config).into_sse_stream(ctx)),
         WidgetType::Slider => Box::pin(widgets::slider::Slider::new(config).into_sse_stream(ctx)),
         WidgetType::Button => Box::pin(widgets::button::Button::new(config).into_sse_stream(ctx)),
-        WidgetType::ToggleButton => {
-            Box::pin(widgets::toggle_button::ToggleButton::new(config).into_sse_stream(ctx))
-        }
+        WidgetType::ToggleButton => Box::pin(widgets::toggle_button::ToggleButton::new(config).into_sse_stream(ctx)),
         WidgetType::Chart => Box::pin(widgets::chart::Chart::new(config).into_sse_stream(ctx)),
         WidgetType::Select => Box::pin(widgets::select::Select::new(config).into_sse_stream(ctx)),
-        WidgetType::MultiStateLed => {
-            Box::pin(widgets::multi_state_led::MultiStateLed::new(config).into_sse_stream(ctx))
-        }
+        WidgetType::MultiStateLed => Box::pin(widgets::multi_state_led::MultiStateLed::new(config).into_sse_stream(ctx)),
         WidgetType::Group => {
             let stream: SseStream = Box::pin(async_stream::stream! {
                 yield Ok(Event::default().data("<!-- group widget has no stream -->"));
             });
             return Sse::new(stream).keep_alive(KeepAlive::default());
         }
+        WidgetType::Hidden => Box::pin(widgets::hidden::Hidden::new(config).into_sse_stream(ctx)),
     };
     Sse::new(stream).keep_alive(KeepAlive::default())
 }

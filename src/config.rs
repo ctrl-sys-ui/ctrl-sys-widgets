@@ -839,8 +839,10 @@ pub enum WidgetType {
     Select,
     Group,
     /// Multi-state polygon LED: open (green) / closed (red) / pending (grey).
-    /// Shape defaults to a rectangle; override with `polygon_points` for a bowtie.
+    /// Shape defaults to a rectangle; override with `polygon_points`.
     MultiStateLed,
+    /// Hidden widget type used for hold values internally. Not rendered in the UI.
+    Hidden,
 }
 
 /// Explicit container size for Group widgets (applied as inline min-width/min-height)

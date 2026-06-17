@@ -34,6 +34,7 @@ pub mod button;
 pub mod chart;
 pub mod gauge;
 pub mod group;
+pub mod hidden;
 pub mod led;
 pub mod multi_state_led;
 pub mod select;
@@ -51,6 +52,7 @@ pub use button::render_button;
 pub use chart::render_chart;
 pub use gauge::render_gauge;
 pub use group::render_group;
+pub use hidden::render_hidden;
 pub use led::render_led;
 pub use multi_state_led::render_multi_state_led;
 pub use select::render_select;
@@ -100,6 +102,7 @@ pub async fn run_widget_monitor_html_async(
         }
         WidgetType::Chart => chart::Chart::run_monitor_async(config, ctx, tx).await,
         WidgetType::Select => select::Select::run_monitor_async(config, ctx, tx).await,
+        WidgetType::Hidden => hidden::Hidden::run_monitor_async(config, ctx, tx).await,
         WidgetType::MultiStateLed => {
             multi_state_led::MultiStateLed::run_monitor_async(config, ctx, tx).await
         }
@@ -151,6 +154,7 @@ pub fn render_widget_from_config(widget: &WidgetConfig) -> Markup {
         WidgetType::ToggleButton => render_toggle_button(widget),
         WidgetType::Chart => render_chart(widget),
         WidgetType::Select => render_select(widget),
+        WidgetType::Hidden => render_hidden(widget),
         WidgetType::MultiStateLed => render_multi_state_led(widget),
         WidgetType::Group => render_group(widget),
     }
