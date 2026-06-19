@@ -240,9 +240,13 @@ fn spawn_ipc_backend(
 
     std::thread::spawn(move || {
         let runtime = tokio::runtime::Runtime::new().expect("tokio runtime");
-        // Build state inside runtime context so startup hooks using tokio::spawn work in IPC mode.
-        let state = runtime.block_on(async { (hooks.build_app_state)(config, None) });
-        maybe_start_modbus_runtime(&state);
+        // Build state and start the modbus bridge inside the runtime context so
+        // that tokio::spawn calls within startup hooks work correctly in IPC mode.
+        let state = runtime.block_on(async {
+            let s = (hooks.build_app_state)(config, None);
+            maybe_start_modbus_runtime(&s);
+            s
+        });
 
         // Run optional app-logic hook inside the runtime (gives access to tokio::spawn).
         if let Some(logic) = &hooks.app_logic {

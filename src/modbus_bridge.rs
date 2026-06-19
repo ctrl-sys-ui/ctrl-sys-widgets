@@ -1,7 +1,6 @@
 use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::Arc;
-use std::time::Duration;
 
 use dashmap::DashMap;
 use tokio::sync::mpsc as tokio_mpsc;
@@ -13,8 +12,23 @@ use crate::config::{
     ModbusBridgeAccessMode, ModbusBridgeRegisterMap, ModbusRegisterType, ProtocolConfig,
     WidgetServerProtocolConfig,
 };
-use crate::modbus_server::{new_register_bank, start_modbus_server, RegisterBank};
+use crate::modbus_server::{
+    new_register_bank, start_modbus_server, RegisterBank, WriteAccessKind,
+};
 use crate::protocol_control::ProtocolControlError;
+
+fn write_kind_matches_type(kind: WriteAccessKind, register_type: &ModbusRegisterType) -> bool {
+    match register_type {
+        ModbusRegisterType::Coil => {
+            matches!(kind, WriteAccessKind::SingleCoil | WriteAccessKind::MultiCoil)
+        }
+        ModbusRegisterType::HoldingRegister => {
+            matches!(kind, WriteAccessKind::SingleRegister | WriteAccessKind::MultiRegister)
+        }
+        // Discrete/Input registers are read-only by Modbus definition.
+        ModbusRegisterType::DiscreteInput | ModbusRegisterType::InputRegister => false,
+    }
+}
 
 pub struct ModbusBridgeContext {
     pub register_bank: RegisterBank,
@@ -24,7 +38,6 @@ pub struct ModbusBridgeContext {
 struct WriteThroughRequest {
     mapping: ModbusBridgeRegisterMap,
     value: u16,
-    respond: std::sync::mpsc::Sender<Result<(), ExceptionCode>>,
 }
 
 impl ModbusBridgeContext {
@@ -67,6 +80,14 @@ fn collect_widget_proxy_mappings(state: &AppState) -> Vec<ModbusBridgeRegisterMa
                             .or(Some(modbus.register)),
                         access: server.access,
                     });
+                    tracing::info!(
+                        "[bridge] widget {} proxy mapping: exposed register {} -> upstream register {} (type {:?}, word count {})",
+                        widget.id,
+                        server.proxy_register,
+                        modbus.register,
+                        modbus.register_type,
+                        modbus.word_count.max(1)
+                    );
                 }
                 Some(ProtocolConfig::Local(_)) => {
                     let Some(WidgetServerProtocolConfig::ModbusTcp(server_modbus)) =
@@ -85,6 +106,13 @@ fn collect_widget_proxy_mappings(state: &AppState) -> Vec<ModbusBridgeRegisterMa
                         target_upstream_register: server.target_upstream_register,
                         access: server.access,
                     });
+                    tracing::info!(
+                        "[bridge] widget {} proxy mapping: exposed register {} -> local widget (type {:?}, word count {})",
+                        widget.id,
+                        server.proxy_register,
+                        server_modbus.register_type,
+                        server_modbus.word_count.max(1)
+                    );
                 }
                 _ => {}
             }
@@ -141,14 +169,14 @@ pub fn start_bridge_runtime(state: &AppState) -> Result<Vec<JoinHandle<()>>, Pro
     let (write_tx, mut write_rx) = tokio_mpsc::unbounded_channel::<WriteThroughRequest>();
     let write_ctx = state.channel_ctx.clone();
     let write_upstream = bridge.upstream.clone();
+
     handles.push(tokio::spawn(async move {
         while let Some(req) = write_rx.recv().await {
             let Some(upstream) = write_upstream.clone() else {
-                tracing::warn!(
+                tracing::debug!(
                     "[bridge] write-through request rejected for exposed register {} because no upstream bridge target is configured",
                     req.mapping.exposed_register
                 );
-                let _ = req.respond.send(Err(ExceptionCode::IllegalFunction));
                 continue;
             };
 
@@ -176,7 +204,7 @@ pub fn start_bridge_runtime(state: &AppState) -> Result<Vec<JoinHandle<()>>, Pro
                 .await;
             match result {
                 Ok(()) => {
-                    tracing::info!(
+                    tracing::debug!(
                         "[bridge] write-through forwarded exposed register {} -> upstream {}:{} unit {} register {} value {}",
                         req.mapping.exposed_register,
                         upstream.host,
@@ -185,19 +213,18 @@ pub fn start_bridge_runtime(state: &AppState) -> Result<Vec<JoinHandle<()>>, Pro
                         target_register,
                         value
                     );
-                    let _ = req.respond.send(Ok(()));
                 }
                 Err(e) => {
                     tracing::warn!(
-                        "[bridge] write-through failed for exposed register {} -> upstream {}:{} unit {} register {}: {}",
+                        "[bridge] write-through failed for exposed register {} -> upstream {}:{} unit {} register {} value {}: error - {}",
                         req.mapping.exposed_register,
                         upstream.host,
                         upstream.port,
                         upstream.unit_id,
                         target_register,
+                        value,
                         e
                     );
-                    let _ = req.respond.send(Err(ExceptionCode::IllegalFunction));
                 }
             }
         }
@@ -206,32 +233,48 @@ pub fn start_bridge_runtime(state: &AppState) -> Result<Vec<JoinHandle<()>>, Pro
     let server = start_modbus_server(
         addr,
         state.channel_ctx.modbus_bridge.register_bank.clone(),
-        move |register, value| {
+        move |register, value, access_kind| {
             match writable.get(&register) {
                 Some(m) => {
-                    let (resp_tx, resp_rx) = std::sync::mpsc::channel::<Result<(), ExceptionCode>>();
-                    if write_tx
-                        .send(WriteThroughRequest {
-                            mapping: m.clone(),
-                            value,
-                            respond: resp_tx,
-                        })
-                        .is_err()
-                    {
+                    if !write_kind_matches_type(access_kind, &m.register_type) {
+                        tracing::warn!(
+                            "[bridge] incompatible write rejected for exposed register {} type {:?} using {:?} value {}",
+                            register,
+                            m.register_type,
+                            access_kind,
+                            value
+                        );
                         return Err(ExceptionCode::IllegalFunction);
                     }
 
-                    match resp_rx.recv_timeout(Duration::from_millis(1500)) {
-                        Ok(result) => result,
-                        Err(_) => {
-                            tracing::warn!(
-                                "[bridge] write-through timed out for exposed register {} value {}",
-                                register,
-                                value
-                            );
-                            Err(ExceptionCode::IllegalFunction)
-                        }
+                    let mut normalized = value;
+                    if m.register_type == ModbusRegisterType::Coil {
+                        normalized = if value == 0 { 0 } else { 1 };
                     }
+
+                    tracing::debug!(
+                        "[bridge] write-through request for exposed register {} value {}",
+                        register,
+                        normalized
+                    );
+
+                    if write_tx
+                        .send(WriteThroughRequest {
+                            mapping: m.clone(),
+                            value: normalized,
+                        })
+                        .is_err()
+                    {
+                        tracing::warn!(
+                            "[bridge] write-forward worker unavailable for exposed register {} value {}; accepting local write only",
+                            register,
+                            normalized
+                        );
+                    }
+
+                    // Accept immediately so local register-bank state is committed by the server,
+                    // even if upstream forwarding is slow or disconnected.
+                    Ok(())
                 }
                 None => {
                     tracing::warn!(
@@ -247,9 +290,12 @@ pub fn start_bridge_runtime(state: &AppState) -> Result<Vec<JoinHandle<()>>, Pro
     handles.push(server);
 
     for mapping in mappings {
+        // Incoming events from widgets or upstream registers are used to update the exposed register in the bridge's register bank.
+        // Then expose these events upstream to the bridge's Modbus server.
         if let Some(widget_id) = mapping.source_widget_id.clone() {
             let ctx = state.channel_ctx.clone();
             let exposed = mapping.exposed_register;
+            // Subscribe to widget value changes and update the exposed register in the bridge's register bank.
             handles.push(tokio::spawn(async move {
                 let mut rx = ctx.subscribe_widget_value(&widget_id);
                 loop {
@@ -265,7 +311,10 @@ pub fn start_bridge_runtime(state: &AppState) -> Result<Vec<JoinHandle<()>>, Pro
                     }
                 }
             }));
-        } else if let Some(source_register) = mapping.source_upstream_register {
+        }
+        // Incoming event from upstream registers are used to update the exposed register in the bridge's register bank.
+        // Then expose these events downstream to widgets or other clients connected to the bridge's Modbus server.
+        else if let Some(source_register) = mapping.source_upstream_register {
             let Some(upstream) = bridge.upstream.clone() else {
                 continue;
             };
@@ -276,6 +325,9 @@ pub fn start_bridge_runtime(state: &AppState) -> Result<Vec<JoinHandle<()>>, Pro
             let ctx = state.channel_ctx.clone();
             let exposed = mapping.exposed_register;
             handles.push(tokio::spawn(async move {
+                // pstream polling loop now uses exponential back-off — on each failed read the 
+                // retry interval doubles (250ms → 500ms → 1s → 2s → 5s max), and resets to 250ms on the next successful read. 
+                let mut poll_interval_ms = 250u64;
                 loop {
                     let device =
                         ctx.modbus_pool
@@ -285,6 +337,7 @@ pub fn start_bridge_runtime(state: &AppState) -> Result<Vec<JoinHandle<()>>, Pro
                         .await;
                     match read {
                         Ok(words) => {
+                            poll_interval_ms = 250;
                             for (offset, word) in words.iter().copied().enumerate() {
                                 let addr = exposed.saturating_add(offset as u16);
                                 ctx.modbus_bridge.register_bank.insert(addr, word);
@@ -292,16 +345,18 @@ pub fn start_bridge_runtime(state: &AppState) -> Result<Vec<JoinHandle<()>>, Pro
                         }
                         Err(e) => {
                             tracing::warn!(
-                                "[bridge] upstream poll failed for {}:{} unit {} register {}: {}",
+                                "[bridge] upstream poll failed for {}:{} unit {} register {} (retrying in {}ms): {}",
                                 upstream.host,
                                 upstream.port,
                                 upstream.unit_id,
                                 source_register,
+                                poll_interval_ms,
                                 e
                             );
+                            poll_interval_ms = (poll_interval_ms * 2).min(5000);
                         }
                     }
-                    tokio::time::sleep(std::time::Duration::from_millis(250)).await;
+                    tokio::time::sleep(std::time::Duration::from_millis(poll_interval_ms)).await;
                 }
             }));
         }
