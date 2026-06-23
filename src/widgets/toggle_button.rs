@@ -151,6 +151,17 @@ enum NextEvent {
     EnabledChanged,
 }
 
+fn publish_countdown_secs(ctx: &ChannelContext, toggle_widget_id: &str, secs: u64) {
+    let mirror_widget_id = format!("{}_reset_countdown", toggle_widget_id);
+    let cv = ChannelValue {
+        raw_value: secs as f64,
+        value_str: secs.to_string(),
+        precision: 0,
+        ..ChannelValue::default()
+    };
+    ctx.publish_widget_value(&mirror_widget_id, cv);
+}
+
 impl ToggleButton {
     pub(crate) async fn run_monitor_async(
         config: Arc<WidgetConfig>,
@@ -193,6 +204,7 @@ impl ToggleButton {
                 | NextEvent::Channel(Some(ChannelEvent::Error(_))) => {
                     countdown_end = None;
                     last_value = None;
+                    publish_countdown_secs(&ctx, &config.id, 0);
                     let html = render_inner_disconnected(&config).into_string();
                     if !send_if_changed(&tx, &mut last_html, html) {
                         break;
@@ -216,6 +228,7 @@ impl ToggleButton {
                     let countdown_secs = countdown_end
                         .and_then(|end| end.checked_duration_since(now))
                         .map(|d| d.as_secs().max(1));
+                    publish_countdown_secs(&ctx, &config.id, countdown_secs.unwrap_or(0));
 
                     let enabled = *enabled_rx.borrow();
                     last_value = Some(cv.clone());
@@ -247,30 +260,51 @@ impl ToggleButton {
 
                         if countdown_secs.is_none() {
                             // Countdown has expired.  Write reset_default to the channel so
-                            // the PV/register is actually reset.  This fires unconditionally
+                            // the PV/register is actually reset.  
+                            // This fires unconditionally
                             // — whether the ON state came from a button click or an external
                             // channel event — so the button always resets after the timeout.
-                            countdown_end = None;
-                            let reset_value = config.reset_default.unwrap_or(0).to_string();
-                            let config_write = config.clone();
-                            let ctx_write = ctx.clone();
-                            tokio::spawn(async move {
+
+                            // Check if value is already at reset_default; if so, don't write again.
+                            let current_value = cv.raw_value;
+                            if Some(current_value) == config.reset_default {
                                 tracing::info!(
-                                    "[{}] toggle countdown expired — writing reset_default={}",
-                                    config_write.id,
-                                    reset_value
+                                    "[{}] toggle countdown expired — already at reset_default={:?}, not writing",
+                                    config.id,
+                                    config.reset_default
                                 );
-                                let _ = crate::widgets::write_channel(
-                                    (*config_write).clone(),
-                                    reset_value,
-                                    ctx_write,
-                                )
-                                .await;
-                            });
+                            } else {
+                                tracing::info!(
+                                    "[{}] toggle countdown expired — writing reset_default={:?}",
+                                    config.id,
+                                    config.reset_default
+                                );
+                                
+                                countdown_end = None;
+                                publish_countdown_secs(&ctx, &config.id, 0);
+                                let reset_value = config.reset_default.unwrap_or(0.0).round() as i64;
+                                let reset_value_str = reset_value.to_string();
+                                let config_write = config.clone();
+                                let ctx_write = ctx.clone();
+                                tokio::spawn(async move {
+                                    tracing::info!(
+                                        "[{}] toggle countdown expired — writing reset_default={}",
+                                        config_write.id,
+                                        reset_value_str
+                                    );
+                                    let _ = crate::widgets::write_channel(
+                                        (*config_write).clone(),
+                                        reset_value_str,
+                                        ctx_write,
+                                    )
+                                    .await;
+                                });
+                            }
                             // Don't push an SSE update here; wait for the channel to echo
                             // back the written value so the button transitions directly
                             // from the last countdown tick to OFF with no "pressed" flash.
                         } else {
+                            publish_countdown_secs(&ctx, &config.id, countdown_secs.unwrap_or(0));
                             let html = render_inner_connected_with_countdown(
                                 &config,
                                 cv,

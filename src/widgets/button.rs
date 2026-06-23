@@ -106,6 +106,7 @@ fn render_button_html(
     tooltip: &str,
 ) -> Markup {
     html! {
+        @let val = config.write_value.unwrap_or(1.0) as i64;
         div class="widget-inner" {
             @if !tooltip.is_empty() {
                 (super::render_info_btn(tooltip))
@@ -116,7 +117,7 @@ fn render_button_html(
                 }
                 disabled[disabled]
                 hx-post={"/api/widget/" (config.id) "/set"}
-                hx-vals=(format!(r#"{{"value": "{}"}}"#, config.write_value.unwrap_or(1)))
+                hx-vals=(format!(r#"{{"value": "{}"}}"#, val))
                 hx-target="next .status"
                 hx-swap="innerHTML" {
                 (config.label)

@@ -679,10 +679,11 @@ pub struct WidgetConfig {
     /// Accepted values: `"green"`, `"red"`, `"blue"` (default).
     #[serde(default)]
     pub color: Option<String>,
-    /// Value written to the channel when a button is clicked.
+    /// Value written to the channel when a widget is actioned. 
+    /// For example, when a button is clicked. 
     /// Defaults to `1` (ON). Set to `0` for a button that writes OFF/close.
     #[serde(default)]
-    pub write_value: Option<u16>,
+    pub write_value: Option<f64>,
     /// Optional delayed auto-reset for `toggle_button` writes, in milliseconds.
     ///
     /// When set to a non-zero value, a toggle write is followed by an automatic
@@ -694,7 +695,7 @@ pub struct WidgetConfig {
     /// Used by `toggle_button` when `reset_timeout` is set to a non-zero value.
     /// If omitted, the reset target defaults to `0`.
     #[serde(default)]
-    pub reset_default: Option<i64>,
+    pub reset_default: Option<f64>,
 }
 
 impl WidgetConfig {
