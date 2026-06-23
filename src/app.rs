@@ -248,7 +248,7 @@ fn maybe_schedule_toggle_reset(
         return;
     }
 
-    // Making sure toggle button alway writes an integer value to the channel, so we can safely cast to i64 here.
+    // Making sure toggle button always writes an integer value to the channel, so we can safely cast to i64 here.
     let reset_value = widget.reset_default.unwrap_or(0.0).round() as i64;
     let reset_value_str = reset_value.to_string();
     let widget_id = widget.id.clone();

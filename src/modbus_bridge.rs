@@ -36,8 +36,15 @@ pub struct ModbusBridgeContext {
 }
 
 struct WriteThroughRequest {
+    register: u16,
     mapping: ModbusBridgeRegisterMap,
     value: u16,
+}
+
+#[derive(Clone)]
+struct LocalProxyWriteTarget {
+    widget: crate::config::WidgetConfig,
+    mapping: ModbusBridgeRegisterMap,
 }
 
 impl ModbusBridgeContext {
@@ -140,6 +147,37 @@ fn encode_widget_value_to_words(raw: f64, register_type: &ModbusRegisterType, wo
     vec![raw.round().clamp(0.0, u16::MAX as f64) as u16]
 }
 
+fn decode_words_to_widget_value(words: &[u16], register_type: &ModbusRegisterType, word_count: u8) -> f64 {
+    let wc = word_count.max(1);
+    if wc == 0 || words.is_empty() {
+        return 0.0;
+    }
+
+    if wc == 1 || matches!(register_type, ModbusRegisterType::Coil | ModbusRegisterType::DiscreteInput) {
+        return words[0] as f64;
+    }
+
+    if wc == 2 && words.len() >= 2 {
+        // For two-word scalar values, decode big-endian IEEE754 f32 words.
+        let bits = ((words[0] as u32) << 16) | (words[1] as u32);
+        return f32::from_bits(bits) as f64;
+    }
+
+    words[0] as f64
+}
+
+fn to_local_value_string(widget: &crate::config::WidgetConfig, raw: f64) -> String {
+    match widget.data_type.as_deref() {
+        Some("bool") => {
+            if raw == 0.0 { "0".to_string() } else { "1".to_string() }
+        }
+        Some("int") | Some("int32") | Some("integer") => (raw as i64).to_string(),
+        Some("enum") => (raw as i16).to_string(),
+        Some("string") => raw.to_string(),
+        _ => raw.to_string(),
+    }
+}
+
 pub fn start_bridge_runtime(state: &AppState) -> Result<Vec<JoinHandle<()>>, ProtocolControlError> {
     let bridge = state.config.startup.modbus_bridge.clone();
     if !bridge.enabled {
@@ -160,18 +198,88 @@ pub fn start_bridge_runtime(state: &AppState) -> Result<Vec<JoinHandle<()>>, Pro
     let mut handles = Vec::new();
 
     let mut writable = HashMap::<u16, ModbusBridgeRegisterMap>::new();
+    let mut local_proxy_targets = HashMap::<u16, LocalProxyWriteTarget>::new();
     for m in &mappings {
         if m.access == ModbusBridgeAccessMode::ReadWrite {
-            writable.insert(m.exposed_register, m.clone());
+            let width = m.word_count.max(1);
+            for offset in 0..width {
+                writable.insert(m.exposed_register.saturating_add(offset as u16), m.clone());
+            }
+
+            if let Some(widget_id) = m.source_widget_id.as_deref() {
+                let maybe_widget = state
+                    .config
+                    .screens
+                    .iter()
+                    .flat_map(|screen| crate::widgets::collect_data_widgets(&screen.widgets))
+                    .find(|widget| widget.id == widget_id && matches!(widget.protocol, Some(ProtocolConfig::Local(_))));
+
+                if let Some(widget) = maybe_widget {
+                    for offset in 0..width {
+                        local_proxy_targets.insert(
+                            m.exposed_register.saturating_add(offset as u16),
+                            LocalProxyWriteTarget {
+                                widget: widget.clone(),
+                                mapping: m.clone(),
+                            },
+                        );
+                    }
+                }
+            }
         }
     }
 
     let (write_tx, mut write_rx) = tokio_mpsc::unbounded_channel::<WriteThroughRequest>();
     let write_ctx = state.channel_ctx.clone();
     let write_upstream = bridge.upstream.clone();
+    let local_proxy_targets = Arc::new(local_proxy_targets);
+    let local_proxy_targets_for_worker = local_proxy_targets.clone();
 
     handles.push(tokio::spawn(async move {
         while let Some(req) = write_rx.recv().await {
+            if let Some(target) = local_proxy_targets_for_worker.get(&req.register) {
+                let base = target.mapping.exposed_register;
+                let width = target.mapping.word_count.max(1);
+
+                let mut words = Vec::with_capacity(width as usize);
+                for offset in 0..width {
+                    let addr = base.saturating_add(offset as u16);
+                    if addr == req.register {
+                        words.push(req.value);
+                    } else {
+                        words.push(
+                            write_ctx
+                                .modbus_bridge
+                                .register_bank
+                                .get(&addr)
+                                .map(|v| *v)
+                                .unwrap_or(0),
+                        );
+                    }
+                }
+
+                let raw = decode_words_to_widget_value(
+                    &words,
+                    &target.mapping.register_type,
+                    target.mapping.word_count,
+                );
+                let value_str = to_local_value_string(&target.widget, raw);
+
+                if let Err(e) = crate::local_channel::local_write(
+                    &target.widget,
+                    &value_str,
+                    &write_ctx.local_store,
+                ) {
+                    tracing::warn!(
+                        "[bridge] failed to push local widget '{}' from proxy write register {} value {}: {}",
+                        target.widget.id,
+                        req.register,
+                        req.value,
+                        e
+                    );
+                }
+            }
+
             let Some(upstream) = write_upstream.clone() else {
                 tracing::debug!(
                     "[bridge] write-through request rejected for exposed register {} because no upstream bridge target is configured",
@@ -260,6 +368,7 @@ pub fn start_bridge_runtime(state: &AppState) -> Result<Vec<JoinHandle<()>>, Pro
 
                     if write_tx
                         .send(WriteThroughRequest {
+                            register,
                             mapping: m.clone(),
                             value: normalized,
                         })
