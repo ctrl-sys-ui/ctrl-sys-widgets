@@ -1,6 +1,5 @@
 use std::sync::Arc;
 use dashmap::DashMap;
-use plotters::data::float;
 use tokio::sync::watch;
 
 // ─── Unified value type ───────────────────────────────────────────────────────
