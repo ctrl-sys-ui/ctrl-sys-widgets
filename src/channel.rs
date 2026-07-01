@@ -1,5 +1,6 @@
 use std::sync::Arc;
 use dashmap::DashMap;
+use plotters::data::float;
 use tokio::sync::watch;
 
 // ─── Unified value type ───────────────────────────────────────────────────────
@@ -55,19 +56,19 @@ impl Default for ChannelValue {
             value_str: String::new(),
             array_values: Vec::new(),
             named_series: Vec::new(),
-            alarm_severity: 0,
-            alarm_status: 0,
+            alarm_severity: 3, // INVALID
+            alarm_status: 3, // INVALID
             units: String::new(),
-            display_low: 0.0,
-            display_high: 100.0,
-            control_low: 0.0,
-            control_high: 100.0,
-            precision: 1,
-            low_alarm_limit: 0.0,
-            low_warn_limit: 0.0,
-            high_warn_limit: 100.0,
-            high_alarm_limit: 100.0,
-            enum_index: 0,
+            display_low: std::f64::MIN,
+            display_high: std::f64::MAX,
+            control_low: std::f64::MIN,
+            control_high: std::f64::MAX,
+            precision: -1,
+            low_alarm_limit: std::f64::MIN,
+            low_warn_limit: std::f64::MIN,
+            high_warn_limit: std::f64::MAX,
+            high_alarm_limit: std::f64::MAX,
+            enum_index: -1,
             enum_choices: Vec::new(),
             primary_meta: PrimaryMeta::default(),
         }
