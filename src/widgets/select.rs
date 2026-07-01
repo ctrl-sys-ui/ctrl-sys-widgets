@@ -74,7 +74,7 @@ pub fn render_inner_connected(config: &WidgetConfig, cv: &ChannelValue) -> Marku
     };
     let current_index = cv.enum_index as usize;
     let choices = &cv.enum_choices;
-    let tooltip = super::tooltips::build_tooltip(config, cv);
+    let tooltip = super::tooltips::build_enum_tooltip(config, cv);
     let display_text = choices.get(current_index).map(|s| s.trim().to_string())
         .unwrap_or_else(|| current_index.to_string());
 

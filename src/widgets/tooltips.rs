@@ -26,7 +26,13 @@ pub(super) fn build_tooltip(config: &crate::config::WidgetConfig, cv: &crate::ch
         t.push_str(&format!("Units: {}\n", cv.units));
     }
     t.push_str(&format!("Precision: {}\n", cv.precision));
-    if cv.display_low != 0.0 || (cv.display_high - 100.0).abs() > f64::EPSILON {
+
+    if cv.control_low != std::f64::MIN || cv.control_high != std::f64::MAX {
+        t.push_str(&format!("Control Low: {}\n", cv.control_low));
+        t.push_str(&format!("Control High: {}\n", cv.control_high));
+    }
+
+    if cv.display_low != std::f64::MIN || cv.display_high != std::f64::MAX {
         t.push_str(&format!("Display Low: {}\n", cv.display_low));
         t.push_str(&format!("Display High: {}\n", cv.display_high));
     }
@@ -34,7 +40,7 @@ pub(super) fn build_tooltip(config: &crate::config::WidgetConfig, cv: &crate::ch
         t.push_str(&format!("Control Low: {}\n", cv.control_low));
         t.push_str(&format!("Control High: {}\n", cv.control_high));
     }
-    if cv.low_alarm_limit != 0.0 || cv.high_alarm_limit != 100.0 {
+    if cv.low_alarm_limit != std::f64::MIN || cv.high_alarm_limit != std::f64::MAX {
         t.push_str(&format!("Low Alarm Limit: {}\n", cv.low_alarm_limit));
         t.push_str(&format!("Low Warning Limit: {}\n", cv.low_warn_limit));
         t.push_str(&format!("High Warning Limit: {}\n", cv.high_warn_limit));
@@ -81,6 +87,19 @@ pub(super) fn build_led_tooltip(config: &crate::config::WidgetConfig, cv: &crate
 /// Shows only the fields relevant to a button channel.
 pub(super) fn build_button_tooltip(config: &crate::config::WidgetConfig, cv: &crate::channel::ChannelValue) -> String {
     tooltip_for_boolean_channel(config, cv)
+}
+
+/// Build enum tootip for widgets like select
+/// Shows only the fields relevant to a select channel.
+pub (super) fn build_enum_tooltip(config: &crate::config::WidgetConfig, cv: &crate::channel::ChannelValue) -> String {
+    let mut t = tooltip_for_boolean_channel(config, cv);
+    if !cv.enum_choices.is_empty() {
+        t.push_str("\nEnum Choices:\n");
+        for (i, choice) in cv.enum_choices.iter().enumerate() {
+            t.push_str(&format!("  {}: {}\n", i, choice));
+        }
+    }
+    t.trim_end().to_string()
 }
 
 /// Build a minimal tooltip for a disconnected widget — shows ID and channel address
