@@ -92,11 +92,11 @@ impl Button {
 }
 
 pub fn render_inner_connected(config: &WidgetConfig, cv: &ChannelValue, enabled: bool) -> Markup {
-    render_button_html(config, !enabled, &super::build_tooltip(config, cv))
+    render_button_html(config, !enabled, &super::tooltips::build_button_tooltip(config, cv))
 }
 
 pub fn render_inner_disconnected(config: &WidgetConfig) -> Markup {
-    let tooltip = super::build_disconnected_tooltip(config);
+    let tooltip = super::tooltips::build_disconnected_tooltip(config);
     render_button_html(config, true, &tooltip)
 }
 
@@ -109,7 +109,7 @@ fn render_button_html(
         @let val = config.write_value.unwrap_or(1.0) as i64;
         div class="widget-inner" {
             @if !tooltip.is_empty() {
-                (super::render_info_btn(tooltip))
+                (super::tooltips::render_tooltip_info_btn(tooltip))
             }
             button class={
                     "widget-button"

@@ -66,7 +66,7 @@ fn render_toggle_html(
             @if !tooltip.is_empty() {
                 div class="button-label-row" style="display:flex;align-items:center;gap:0.4rem;margin-bottom:0.5rem;" {
                     span class="widget-label" { (config.label) }
-                    (super::render_info_btn(tooltip))
+                    (super::tooltips::render_tooltip_info_btn(tooltip))
                 }
             }
             button class=(btn_class)
@@ -116,7 +116,7 @@ fn render_inner_connected_with_countdown(
         is_on,
         next_val,
         !enabled,
-        &super::build_tooltip(config, cv),
+        &super::tooltips::build_button_tooltip(config, cv),
         countdown_secs,
     )
 }

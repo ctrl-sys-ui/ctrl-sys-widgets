@@ -1,4 +1,4 @@
-use crate::channel::{ChannelContext, ChannelValue};
+use crate::channel::ChannelContext;
 #[cfg(feature = "modbus")]
 use crate::config::ModbusTCPConfig;
 use crate::config::{ActionConfig, ProtocolConfig, ScreenConfig, WidgetConfig, WidgetType};
@@ -39,6 +39,7 @@ pub mod led;
 pub mod multi_state_led;
 pub mod select;
 pub mod slider;
+pub mod tooltips;
 /// MD bolt — white fill, 16 px — button widget action indicator
 // pub const BOLT_SVG: &str = "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgd2lkdGg9IjE2IiBoZWlnaHQ9IjE2Ij48cGF0aCBmaWxsPSJ3aGl0ZSIgZD0iTTcgMnYxMWgzdjlsNy0xMmgtNGw0LTh6Ii8+PC9zdmc+";
 
@@ -522,88 +523,7 @@ pub fn alarm_status_str(status: i32) -> &'static str {
     }
 }
 
-/// Build a tooltip string from a `ChannelValue` — shared by all widgets.
-pub(super) fn build_tooltip(config: &crate::config::WidgetConfig, cv: &ChannelValue) -> String {
-    use crate::config::ProtocolConfig;
-    let mut t = String::new();
 
-    let protocol_label = match &config.protocol {
-        Some(ProtocolConfig::Local(_)) => "Local",
-        #[cfg(feature = "epics")]
-        Some(ProtocolConfig::EpicsPva(_)) => "EPICS PVA",
-        #[cfg(feature = "modbus")]
-        Some(ProtocolConfig::ModbusTcp(_)) => "Modbus TCP",
-        _ => "None",
-    };
-    t.push_str(&format!("ID: {}\n", config.id));
-    t.push_str(&format!("Protocol: {}\n", protocol_label));
-    t.push_str(&format!("Channel: {}\n", config.channel_address()));
-
-    if !cv.primary_meta.description.is_empty() {
-        t.push_str(&cv.primary_meta.description);
-        t.push('\n');
-    }
-    if !cv.units.is_empty() {
-        t.push_str(&format!("Units: {}\n", cv.units));
-    }
-    t.push_str(&format!("Precision: {}\n", cv.precision));
-    if cv.display_low != 0.0 || (cv.display_high - 100.0).abs() > f64::EPSILON {
-        t.push_str(&format!("Display Low: {}\n", cv.display_low));
-        t.push_str(&format!("Display High: {}\n", cv.display_high));
-    }
-    if cv.control_low != cv.display_low || cv.control_high != cv.display_high {
-        t.push_str(&format!("Control Low: {}\n", cv.control_low));
-        t.push_str(&format!("Control High: {}\n", cv.control_high));
-    }
-    if cv.low_alarm_limit != 0.0 || cv.high_alarm_limit != 100.0 {
-        t.push_str(&format!("Low Alarm Limit: {}\n", cv.low_alarm_limit));
-        t.push_str(&format!("Low Warning Limit: {}\n", cv.low_warn_limit));
-        t.push_str(&format!("High Warning Limit: {}\n", cv.high_warn_limit));
-        t.push_str(&format!("High Alarm Limit: {}\n", cv.high_alarm_limit));
-    }
-    let sev_str = match cv.alarm_severity {
-        0 => "No Alarm",
-        1 => "Minor",
-        2 => "Major",
-        _ => "Invalid",
-    };
-    t.push_str(&format!("Alarm Severity: {}\n", sev_str));
-    t.push_str(&format!(
-        "Alarm Status: {}\n",
-        alarm_status_str(cv.alarm_status)
-    ));
-
-    t.trim_end().to_string()
-}
-
-/// Simplified tooltip for binary indicators (LED, MultiStateLed).
-/// Shows only the fields relevant to a coil/bool channel.
-pub(super) fn build_led_tooltip(config: &crate::config::WidgetConfig, cv: &ChannelValue) -> String {
-    let sev_str = match cv.alarm_severity {
-        0 => "No Alarm",
-        1 => "Minor",
-        2 => "Major",
-        _ => "Invalid",
-    };
-    format!(
-        "ID: {}\nProtocol: {}\nAlarm Severity: {}\nAlarm Status: {}",
-        config.id,
-        config.channel_address(),
-        sev_str,
-        alarm_status_str(cv.alarm_status),
-    )
-}
-
-/// Build a minimal tooltip for a disconnected widget — shows ID and channel address
-/// so the info button appears and is useful even before a connection is established.
-pub(super) fn build_disconnected_tooltip(config: &crate::config::WidgetConfig) -> String {
-    let ch = config.channel_address();
-    if ch.is_empty() {
-        format!("ID: {}\nStatus: Disconnected", config.id)
-    } else {
-        format!("ID: {}\nChannel: {}\nStatus: Disconnected", config.id, ch)
-    }
-}
 
 /// Build an inline style string from the widget's optional style config (width/height).
 /// Always includes `position:relative` so the absolutely-positioned info button
@@ -619,20 +539,4 @@ pub fn widget_container_style(config: &crate::config::WidgetConfig) -> Option<St
         }
     }
     Some(s)
-}
-
-/// Render an info button — two icon variants let CSS pick the right one per theme.
-/// The button is absolutely positioned in the top-left corner of the nearest
-/// `position:relative` ancestor (i.e. the widget container), so it never
-/// participates in the widget-inner flex layout.
-pub(super) fn render_info_btn(tooltip: &str) -> maud::Markup {
-    html! {
-        button class="widget-info-btn"
-               data-tooltip=(tooltip)
-               type="button"
-               style="position:absolute;top:2px;left:2px;z-index:10;" {
-            img class="info-icon info-icon--dark"  src=(INFO_SVG_DARK)  alt="info";
-            img class="info-icon info-icon--light" src=(INFO_SVG_LIGHT) alt="info";
-        }
-    }
 }

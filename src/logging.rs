@@ -1,5 +1,6 @@
 use tracing_subscriber::filter::LevelFilter;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, Layer};
+use tracing_appender::rolling::{RollingFileAppender, Rotation};
 
 /// Custom timer that emits local wall-clock time with the UTC offset
 /// (including DST), e.g. `2026-05-25T14:01:06.301333+02:00`.
@@ -18,8 +19,8 @@ impl tracing_subscriber::fmt::time::FormatTime for LocalTime {
 /// Initialise application logging.
 ///
 /// * `log_dir` — when `Some`, writes two daily rolling log files:
-///   - `mycela.log.<YYYY-MM-DD>`   — INFO, WARN and ERROR (operational log)
-///   - `mycela.debug.<YYYY-MM-DD>` — TRACE through ERROR (all levels; verbose/diagnostic log)
+///   - `mycela.<YYYY-MM-DD>.log`   — INFO, WARN and ERROR (operational log)
+///   - `mycela.debug.<YYYY-MM-DD>.log` — TRACE through ERROR (all levels; verbose/diagnostic log)
 ///   The returned guards **must** be held for the entire process lifetime;
 ///   dropping them early causes the background writer threads to shut down
 ///   and any buffered log messages to be flushed and lost.  Assign the
@@ -60,7 +61,13 @@ pub fn init_logging(
             .unwrap_or_else(|| "app".to_string());
 
         // Operational log — INFO, WARN, ERROR.
-        let info_appender = tracing_appender::rolling::daily(dir, format!("{app_name}.log"));
+        //let info_appender = tracing_appender::rolling::daily(dir, format!("{app_name}.log"));
+        let info_appender = RollingFileAppender::builder()
+            .rotation(Rotation::DAILY)
+            .filename_prefix(&app_name)
+            .filename_suffix("log")
+            .build(dir)
+            .unwrap();
         let (info_nb, info_guard) = tracing_appender::non_blocking(info_appender);
         let info_layer = tracing_subscriber::fmt::layer()
             .with_ansi(false)
@@ -71,7 +78,12 @@ pub fn init_logging(
         // Verbose log — all levels (TRACE through ERROR).
         // Includes WARN and ERROR so that a developer reading only the debug file
         // still sees every problem without also needing to open the operational log.
-        let debug_appender = tracing_appender::rolling::daily(dir, format!("{app_name}.debug"));
+        let debug_appender = RollingFileAppender::builder()
+            .rotation(Rotation::DAILY)
+            .filename_prefix(&app_name)
+            .filename_suffix("debug.log")
+            .build(dir)
+            .unwrap();
         let (debug_nb, debug_guard) = tracing_appender::non_blocking(debug_appender);
         let debug_layer = tracing_subscriber::fmt::layer()
             .with_ansi(false)

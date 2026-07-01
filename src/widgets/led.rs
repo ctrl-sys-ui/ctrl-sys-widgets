@@ -75,11 +75,11 @@ pub fn render_inner_connected(config: &WidgetConfig, cv: &ChannelValue) -> Marku
     } else {
         cv.raw_value > 0.5
     };
-    render_led_html(config, is_on, icon, false, &super::build_led_tooltip(config, cv))
+    render_led_html(config, is_on, icon, false, &super::tooltips::build_led_tooltip(config, cv))
 }
 
 pub fn render_inner_disconnected(config: &WidgetConfig) -> Markup {
-    let tooltip = super::build_disconnected_tooltip(config);
+    let tooltip = super::tooltips::build_disconnected_tooltip(config);
     render_led_html(config, false, Some(super::OFFLINE_SVG), true, &tooltip)
 }
 
@@ -109,7 +109,7 @@ fn render_led_html(
                     img class="widget-status-icon" src=(src) alt="status";
                 }
                 @if !tooltip.is_empty() {
-                    (super::render_info_btn(tooltip))
+                    (super::tooltips::render_tooltip_info_btn(tooltip))
                 }
             }
         }
