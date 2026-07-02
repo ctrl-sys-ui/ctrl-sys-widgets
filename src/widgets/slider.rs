@@ -48,14 +48,18 @@ impl Slider {
                     ctx_clone.publish_widget_value(&widget_id, cv.clone());
                 }
             });
+        let mut last_html = String::new();
         while let Some(event) = stream.next().await {
             let html = match event {
-                ChannelEvent::Value(cv)          => render_inner_connected(&config, &cv).into_string(),
+                ChannelEvent::Value(cv)         => render_inner_connected(&config, &cv).into_string(),
                 ChannelEvent::Disconnected(_)
-                | ChannelEvent::Error(_)         => render_inner_disconnected(&config).into_string(),
-                ChannelEvent::Connected          => continue,
+                | ChannelEvent::Error(_)        => render_inner_disconnected(&config).into_string(),
+                ChannelEvent::Connected         => continue,
             };
-            if tx.send(html).is_err() { break; }
+            if html != last_html {
+                last_html = html.clone();
+                if tx.send(html).is_err() { break; }
+            }
         }
     }
 }
@@ -78,7 +82,7 @@ pub fn render_inner_connected(config: &WidgetConfig, cv: &ChannelValue) -> Marku
         .filter(|&s| s > 0.0)
         .unwrap_or(precision_step);
     render_slider_html(config, cv.raw_value, &display_value, &cv.units, min, max, step,
-                        alarm_class, icon, false, &super::build_tooltip(config, cv))
+                        alarm_class, icon, false, &super::tooltips::build_tooltip(config, cv))
 }
 
 pub fn render_inner_disconnected(config: &WidgetConfig) -> Markup {
@@ -151,7 +155,7 @@ fn render_slider_html(
                     img class="widget-status-icon" src=(src) alt="status";
                 }
                 @if !tooltip.is_empty() {
-                    (super::render_info_btn(tooltip))
+                    (super::tooltips::render_tooltip_info_btn(tooltip))
                 }
             }
         }

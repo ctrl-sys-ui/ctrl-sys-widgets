@@ -512,8 +512,16 @@ pub fn build_channel_value(
         .map(|d| d.description.clone())
         .unwrap_or_default();
 
+    let enum_index = if matches!(config.data_type.as_deref(), Some("enum")) {
+        physical.round() as i16
+    } else {
+        0
+    };
+
     let value_str = match config.data_type.as_deref() {
-        Some("bool") | Some("int32") | Some("int") => (physical as i64).to_string(),
+        Some("bool") | Some("int32") | Some("int") | Some("enum") => {
+            (physical as i64).to_string()
+        }
         _ => format!("{:.prec$}", physical, prec = precision as usize),
     };
 
@@ -550,6 +558,8 @@ pub fn build_channel_value(
             .map(|a| a.high_alarm_limit)
             .unwrap_or(display_high),
         alarm_severity,
+        enum_index,
+        enum_choices: config.options.clone().unwrap_or_default(),
         primary_meta: crate::channel::PrimaryMeta {
             alarm_severity,
             description,

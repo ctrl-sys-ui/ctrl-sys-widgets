@@ -105,7 +105,7 @@ pub fn render_inner_connected(config: &WidgetConfig, cv: &ChannelValue) -> Marku
     } else {
         None
     };
-    let tooltip = super::build_tooltip(config, cv);
+    let tooltip = super::tooltips::build_tooltip(config, cv);
     render_gauge_html(
         config,
         &display_value,
@@ -250,7 +250,7 @@ fn render_gauge_html(
                     img class="widget-status-icon" src=(src) alt="status";
                 }
                 @if !tooltip.is_empty() {
-                    (super::render_info_btn(tooltip))
+                    (super::tooltips::render_tooltip_info_btn(tooltip))
                 }
             }
         }

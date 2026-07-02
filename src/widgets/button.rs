@@ -45,6 +45,18 @@ impl Button {
         let widget_id = config.id.clone();
         let mut stream = crate::channel::channel_stream(config.clone(), ctx);
         let mut last_cv: Option<ChannelValue> = None;
+        let mut last_html = String::new();
+
+        let send_if_changed = |tx: &tokio::sync::mpsc::UnboundedSender<String>,
+                               last_html: &mut String,
+                               html: String| {
+            if *last_html != html {
+                *last_html = html.clone();
+                tx.send(html).is_ok()
+            } else {
+                true
+            }
+        };
 
         loop {
             tokio::select! {
@@ -64,7 +76,7 @@ impl Button {
                         }
                         ChannelEvent::Connected => continue,
                     };
-                    if tx.send(html).is_err() { break; }
+                    if !send_if_changed(&tx, &mut last_html, html) { break; }
                 }
                 Ok(()) = enabled_rx.changed() => {
                     let enabled = *enabled_rx.borrow();
@@ -72,7 +84,7 @@ impl Button {
                         Some(cv) => render_inner_connected(&config, cv, enabled).into_string(),
                         None => render_inner_disconnected(&config).into_string(),
                     };
-                    if tx.send(html).is_err() { break; }
+                    if !send_if_changed(&tx, &mut last_html, html) { break; }
                 }
             }
         }
@@ -80,11 +92,11 @@ impl Button {
 }
 
 pub fn render_inner_connected(config: &WidgetConfig, cv: &ChannelValue, enabled: bool) -> Markup {
-    render_button_html(config, !enabled, &super::build_tooltip(config, cv))
+    render_button_html(config, !enabled, &super::tooltips::build_button_tooltip(config, cv))
 }
 
 pub fn render_inner_disconnected(config: &WidgetConfig) -> Markup {
-    let tooltip = super::build_disconnected_tooltip(config);
+    let tooltip = super::tooltips::build_disconnected_tooltip(config);
     render_button_html(config, true, &tooltip)
 }
 
@@ -94,9 +106,10 @@ fn render_button_html(
     tooltip: &str,
 ) -> Markup {
     html! {
+        @let val = config.write_value.unwrap_or(1.0) as i64;
         div class="widget-inner" {
             @if !tooltip.is_empty() {
-                (super::render_info_btn(tooltip))
+                (super::tooltips::render_tooltip_info_btn(tooltip))
             }
             button class={
                     "widget-button"
@@ -104,7 +117,7 @@ fn render_button_html(
                 }
                 disabled[disabled]
                 hx-post={"/api/widget/" (config.id) "/set"}
-                hx-vals=(format!(r#"{{"value": "{}"}}"#, config.write_value.unwrap_or(1)))
+                hx-vals=(format!(r#"{{"value": "{}"}}"#, val))
                 hx-target="next .status"
                 hx-swap="innerHTML" {
                 (config.label)

@@ -68,12 +68,12 @@ pub fn render_inner_connected(config: &WidgetConfig, cv: &ChannelValue) -> Marku
         3 => Some(super::INVALID_SVG),
         _ => None,
     };
-    let tooltip = super::build_tooltip(config, cv);
+    let tooltip = super::tooltips::build_tooltip(config, cv);
     render_display_html(config, &cv.value_str, &cv.units, &format!("text-update {}", alarm_class), icon, &tooltip)
 }
 
 pub fn render_inner_disconnected(config: &WidgetConfig, _reason: &str) -> Markup {
-    let tooltip = super::build_disconnected_tooltip(config);
+    let tooltip = super::tooltips::build_disconnected_tooltip(config);
     render_display_html(config, "--", "", "text-update alarm-disconnected", Some(super::OFFLINE_SVG), &tooltip)
 }
 
@@ -105,7 +105,7 @@ fn render_display_html(
                     img class="widget-status-icon" src=(src) alt="status";
                 }
                 @if !tooltip.is_empty() {
-                    (super::render_info_btn(tooltip))
+                    (super::tooltips::render_tooltip_info_btn(tooltip))
                 }
             }
         }

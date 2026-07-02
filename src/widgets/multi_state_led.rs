@@ -123,11 +123,11 @@ pub fn render_inner_connected(config: &WidgetConfig, cv: &ChannelValue) -> Marku
         3 => Some(super::INVALID_SVG),
         _ => None,
     };
-    render_polygon_html(config, cls, icon, &super::build_led_tooltip(config, cv))
+    render_polygon_html(config, cls, icon, &super::tooltips::build_led_tooltip(config, cv))
 }
 
 pub fn render_inner_pending(config: &WidgetConfig) -> Markup {
-    let tooltip = super::build_disconnected_tooltip(config);
+    let tooltip = super::tooltips::build_disconnected_tooltip(config);
     render_polygon_html(config, "vs-pending", Some(super::OFFLINE_SVG), &tooltip)
 }
 
@@ -158,7 +158,7 @@ fn render_polygon_html(config: &WidgetConfig, state_cls: &str, icon: Option<&str
                     img class="widget-status-icon" src=(src) alt="status";
                 }
                 @if !tooltip.is_empty() {
-                    (super::render_info_btn(tooltip))
+                    (super::tooltips::render_tooltip_info_btn(tooltip))
                 }
             }
         }

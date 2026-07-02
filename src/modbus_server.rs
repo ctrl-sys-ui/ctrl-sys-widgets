@@ -8,8 +8,8 @@
 //   - Return `Ok(())` to accept the write (bank is updated automatically).
 //   - Return `Err(ExceptionCode)` to reject it (bank unchanged; client receives exception).
 //
-// Read requests (`ReadHoldingRegisters`) are served directly from the bank,
-// returning 0 for any register that has not been written yet.
+// Read requests are served directly from the bank,
+// returning false/0 for any address that has not been written yet.
 
 use std::future;
 use std::net::SocketAddr;
@@ -21,7 +21,15 @@ use tokio::task::JoinHandle;
 use tokio_modbus::prelude::*;
 use tokio_modbus::server::tcp::{accept_tcp_connection, Server};
 
-/// Shared virtual Modbus holding-register memory.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum WriteAccessKind {
+    SingleCoil,
+    SingleRegister,
+    MultiCoil,
+    MultiRegister,
+}
+
+/// Shared virtual Modbus memory bank (coils and registers).
 /// Clone freely — all clones share the same underlying map.
 pub type RegisterBank = Arc<DashMap<u16, u16>>;
 
@@ -39,7 +47,7 @@ struct BankService<F> {
 
 impl<F> tokio_modbus::server::Service for BankService<F>
 where
-    F: Fn(u16, u16) -> Result<(), ExceptionCode> + Send + Sync + 'static,
+    F: Fn(u16, u16, WriteAccessKind) -> Result<(), ExceptionCode> + Send + Sync + 'static,
 {
     type Request = Request<'static>;
     type Response = Response;
@@ -48,6 +56,20 @@ where
 
     fn call(&self, req: Request<'static>) -> Self::Future {
         let result = match req {
+            Request::ReadCoils(addr, cnt) => {
+                let values: Vec<bool> = (addr..addr.saturating_add(cnt))
+                    .map(|a| self.bank.get(&a).map(|v| *v != 0).unwrap_or(false))
+                    .collect();
+                Ok(Response::ReadCoils(values))
+            }
+
+            Request::ReadDiscreteInputs(addr, cnt) => {
+                let values: Vec<bool> = (addr..addr.saturating_add(cnt))
+                    .map(|a| self.bank.get(&a).map(|v| *v != 0).unwrap_or(false))
+                    .collect();
+                Ok(Response::ReadDiscreteInputs(values))
+            }
+
             Request::ReadHoldingRegisters(addr, cnt) => {
                 let values: Vec<u16> = (addr..addr.saturating_add(cnt))
                     .map(|a| self.bank.get(&a).map(|v| *v).unwrap_or(0))
@@ -55,13 +77,57 @@ where
                 Ok(Response::ReadHoldingRegisters(values))
             }
 
-            Request::WriteSingleRegister(addr, val) => match (self.on_write)(addr, val) {
+            Request::ReadInputRegisters(addr, cnt) => {
+                let values: Vec<u16> = (addr..addr.saturating_add(cnt))
+                    .map(|a| self.bank.get(&a).map(|v| *v).unwrap_or(0))
+                    .collect();
+                Ok(Response::ReadInputRegisters(values))
+            }
+
+            Request::WriteSingleCoil(addr, val) => {
+                tracing::debug!("[modbus-server] WriteSingleCoil addr={} value={}", addr, val);
+                let raw = if val { 1 } else { 0 };
+                match (self.on_write)(addr, raw, WriteAccessKind::SingleCoil) {
+                    Ok(()) => {
+                        self.bank.insert(addr, raw);
+                        Ok(Response::WriteSingleCoil(addr, val))
+                    }
+                    Err(e) => Err(e),
+                }
+            }
+
+            Request::WriteSingleRegister(addr, val) => match (self.on_write)(
+                addr,
+                val,
+                WriteAccessKind::SingleRegister,
+            ) {
                 Ok(()) => {
+                    tracing::debug!("[modbus-server] WriteSingleRegister addr={} value={}", addr, val);
                     self.bank.insert(addr, val);
                     Ok(Response::WriteSingleRegister(addr, val))
                 }
                 Err(e) => Err(e),
             },
+
+            Request::WriteMultipleCoils(addr, data) => {
+                let count = data.len() as u16;
+                let mut validated: Vec<(u16, u16)> = Vec::with_capacity(data.len());
+                for (i, &val) in data.iter().enumerate() {
+                    let reg = match addr.checked_add(i as u16) {
+                        Some(r) => r,
+                        None => return future::ready(Err(ExceptionCode::IllegalDataAddress)),
+                    };
+                    let raw = if val { 1 } else { 0 };
+                    match (self.on_write)(reg, raw, WriteAccessKind::MultiCoil) {
+                        Ok(()) => validated.push((reg, raw)),
+                        Err(e) => return future::ready(Err(e)),
+                    }
+                }
+                for (reg, val) in validated {
+                    self.bank.insert(reg, val);
+                }
+                Ok(Response::WriteMultipleCoils(addr, count))
+            }
 
             Request::WriteMultipleRegisters(addr, data) => {
                 let count = data.len() as u16;
@@ -74,7 +140,7 @@ where
                         Some(r) => r,
                         None => return future::ready(Err(ExceptionCode::IllegalDataAddress)),
                     };
-                    match (self.on_write)(reg, val) {
+                    match (self.on_write)(reg, val, WriteAccessKind::MultiRegister) {
                         Ok(()) => validated.push((reg, val)),
                         Err(e) => return future::ready(Err(e)),
                     }
@@ -104,23 +170,24 @@ where
 /// can be used to await or abort the server.
 pub fn start_modbus_server<F>(addr: SocketAddr, bank: RegisterBank, on_write: F) -> JoinHandle<()>
 where
-    F: Fn(u16, u16) -> Result<(), ExceptionCode> + Send + Sync + 'static,
+    F: Fn(u16, u16, WriteAccessKind) -> Result<(), ExceptionCode> + Send + Sync + 'static,
 {
     let on_write = Arc::new(on_write);
     tokio::spawn(async move {
         let listener = match TcpListener::bind(addr).await {
             Ok(l) => {
-                tracing::info!("Modbus TCP server listening on {addr}");
+                tracing::info!("[modbus-server] listening on {addr}");
                 l
             }
             Err(e) => {
-                tracing::error!("Failed to bind Modbus TCP server on {addr}: {e}");
+                tracing::error!("[modbus-server] failed to bind on {addr}: {e}");
                 return;
             }
         };
 
         let server = Server::new(listener);
         let on_connected = |stream, peer| {
+            tracing::info!("[modbus-server] peer client connected: {}", peer);
             let bank = bank.clone();
             let on_write = on_write.clone();
             std::future::ready(accept_tcp_connection(stream, peer, move |_peer_addr| {
@@ -133,12 +200,12 @@ where
 
         let result = server
             .serve(&on_connected, |err| {
-                tracing::error!("Modbus server connection error: {err}");
+                tracing::error!("[modbus-server] connection error: {err}");
             })
             .await;
 
         if let Err(e) = result {
-            tracing::error!("Modbus TCP server stopped with error: {e}");
+            tracing::error!("[modbus-server] stopped with error: {e}");
         }
     })
 }

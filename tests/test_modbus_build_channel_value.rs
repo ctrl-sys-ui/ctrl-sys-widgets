@@ -71,6 +71,25 @@ mod test_modbus_build_channel_value {
     }
 
     #[test]
+    fn test_enum_data_type_sets_integer_value_string_for_select_widgets() {
+        let mut w = widget("w", WidgetType::Select);
+        w.data_type = Some("enum".to_string());
+        w.options = Some(vec!["CLOSED".to_string(), "OPENED".to_string()]);
+        let cv = build_channel_value(1.0, &modbus_channel(1.0, 0.0), &w);
+        assert_eq!(cv.value_str, "1");
+    }
+
+    #[test]
+    fn test_enum_data_type_populates_enum_index_and_choices() {
+        let mut w = widget("w", WidgetType::Select);
+        w.data_type = Some("enum".to_string());
+        w.options = Some(vec!["Off".to_string(), "Manual".to_string(), "Auto".to_string()]);
+        let cv = build_channel_value(2.0, &modbus_channel(1.0, 0.0), &w);
+        assert_eq!(cv.enum_index, 2);
+        assert_eq!(cv.enum_choices, vec!["Off", "Manual", "Auto"]);
+    }
+
+    #[test]
     fn test_display_range_is_derived_from_register_when_no_metadata() {
         // scale=1, offset=0 → display_low = 0*1+0 = 0, display_high = 65535*1+0 = 65535
         let cv = build_channel_value(50.0, &modbus_channel(1.0, 0.0), &widget("w", WidgetType::Gauge));

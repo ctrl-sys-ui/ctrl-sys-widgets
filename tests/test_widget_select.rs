@@ -62,4 +62,15 @@ mod test_widget_select {
         let html = render_inner_connected(&w(), &cv).into_string();
         assert!(html.contains("selected"));
     }
+
+    #[test]
+    fn test_connected_select_includes_status_placeholder_for_write_feedback() {
+        let cv = ChannelValue {
+            enum_index: 0,
+            enum_choices: vec!["Off".to_string(), "On".to_string()],
+            ..ChannelValue::default()
+        };
+        let html = render_inner_connected(&w(), &cv).into_string();
+        assert!(html.contains("class=\"status\""), "got: {html}");
+    }
 }

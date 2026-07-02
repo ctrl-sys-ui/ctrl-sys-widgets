@@ -369,6 +369,13 @@
               }
             },
             {
+              "id": "select_on_off", "type": "select", "label": "Select OFF/ON", "data_type": "enum",
+              "style": { "width": "100%", "height": "auto" },
+              "options": ["Off", "On"],
+              "protocol": { "type": "modbus-tcp", "host": "127.0.0.1", "port": 5020,
+                            "register": 1, "register_type": "coil", "min_poll_interval_ms": 500 }
+            },
+            {
               "id": "modbus_setpoint_entry",
               "type": "text_entry",
               "label": "Modbus Setpoint Entry",

@@ -66,7 +66,7 @@ fn render_toggle_html(
             @if !tooltip.is_empty() {
                 div class="button-label-row" style="display:flex;align-items:center;gap:0.4rem;margin-bottom:0.5rem;" {
                     span class="widget-label" { (config.label) }
-                    (super::render_info_btn(tooltip))
+                    (super::tooltips::render_tooltip_info_btn(tooltip))
                 }
             }
             button class=(btn_class)
@@ -116,7 +116,7 @@ fn render_inner_connected_with_countdown(
         is_on,
         next_val,
         !enabled,
-        &super::build_tooltip(config, cv),
+        &super::tooltips::build_button_tooltip(config, cv),
         countdown_secs,
     )
 }
@@ -151,6 +151,17 @@ enum NextEvent {
     EnabledChanged,
 }
 
+fn publish_countdown_secs(ctx: &ChannelContext, toggle_widget_id: &str, secs: u64) {
+    let mirror_widget_id = format!("{}_reset_countdown", toggle_widget_id);
+    let cv = ChannelValue {
+        raw_value: secs as f64,
+        value_str: secs.to_string(),
+        precision: 0,
+        ..ChannelValue::default()
+    };
+    ctx.publish_widget_value(&mirror_widget_id, cv);
+}
+
 impl ToggleButton {
     pub(crate) async fn run_monitor_async(
         config: Arc<WidgetConfig>,
@@ -164,21 +175,38 @@ impl ToggleButton {
         let mut stream = crate::channel::channel_stream(config.clone(), ctx.clone());
         let mut countdown_end: Option<Instant> = None;
         let mut last_value: Option<ChannelValue> = None;
+        let mut last_html = String::new();
+
+        let send_if_changed = |tx: &tokio::sync::mpsc::UnboundedSender<String>,
+                               last_html: &mut String,
+                               html: String| {
+            if *last_html != html {
+                *last_html = html.clone();
+                tx.send(html).is_ok()
+            } else {
+                true
+            }
+        };
 
         loop {
             let next_tick = countdown_end.map(|_| Instant::now() + Duration::from_secs(1));
 
-            match Self::next_channel_event(&mut stream, next_tick, &mut enabled_rx).await {
+            match Self::next_channel_event(
+                &mut stream,
+                next_tick,
+                &mut enabled_rx,
+            )
+            .await
+            {
                 NextEvent::Channel(None) => break,
                 NextEvent::Channel(Some(ChannelEvent::Connected)) => continue,
                 NextEvent::Channel(Some(ChannelEvent::Disconnected(_)))
                 | NextEvent::Channel(Some(ChannelEvent::Error(_))) => {
                     countdown_end = None;
                     last_value = None;
-                    if tx
-                        .send(render_inner_disconnected(&config).into_string())
-                        .is_err()
-                    {
+                    publish_countdown_secs(&ctx, &config.id, 0);
+                    let html = render_inner_disconnected(&config).into_string();
+                    if !send_if_changed(&tx, &mut last_html, html) {
                         break;
                     }
                 }
@@ -200,16 +228,13 @@ impl ToggleButton {
                     let countdown_secs = countdown_end
                         .and_then(|end| end.checked_duration_since(now))
                         .map(|d| d.as_secs().max(1));
+                    publish_countdown_secs(&ctx, &config.id, countdown_secs.unwrap_or(0));
 
                     let enabled = *enabled_rx.borrow();
                     last_value = Some(cv.clone());
-                    if tx
-                        .send(
-                            render_inner_connected_with_countdown(&config, &cv, countdown_secs, enabled)
-                                .into_string(),
-                        )
-                        .is_err()
-                    {
+                    let html = render_inner_connected_with_countdown(&config, &cv, countdown_secs, enabled)
+                        .into_string();
+                    if !send_if_changed(&tx, &mut last_html, html) {
                         break;
                     }
                 }
@@ -225,7 +250,7 @@ impl ToggleButton {
                         }
                         None => render_inner_disconnected(&config).into_string(),
                     };
-                    if tx.send(html).is_err() { break; }
+                    if !send_if_changed(&tx, &mut last_html, html) { break; }
                 }
                 NextEvent::Tick => {
                     if let (Some(end), Some(cv)) = (countdown_end, last_value.as_ref()) {
@@ -235,37 +260,61 @@ impl ToggleButton {
 
                         if countdown_secs.is_none() {
                             // Countdown has expired.  Write reset_default to the channel so
-                            // the PV/register is actually reset.  This fires unconditionally
+                            // the PV/register is actually reset.  
+                            // This fires unconditionally
                             // — whether the ON state came from a button click or an external
                             // channel event — so the button always resets after the timeout.
-                            countdown_end = None;
-                            let reset_value = config.reset_default.unwrap_or(0).to_string();
-                            let config_write = config.clone();
-                            let ctx_write = ctx.clone();
-                            tokio::spawn(async move {
+
+                            // Check if value is already at reset_default; if so, don't write again.
+                            let current_value = cv.raw_value;
+                            if Some(current_value) == config.reset_default {
                                 tracing::info!(
-                                    "[{}] toggle countdown expired — writing reset_default={}",
-                                    config_write.id,
-                                    reset_value
+                                    "[{}] toggle countdown expired — already at reset_default={:?}, not writing",
+                                    config.id,
+                                    config.reset_default
                                 );
-                                let _ = crate::widgets::write_channel(
-                                    (*config_write).clone(),
-                                    reset_value,
-                                    ctx_write,
-                                )
-                                .await;
-                            });
+                            } else {
+                                tracing::info!(
+                                    "[{}] toggle countdown expired — writing reset_default={:?}",
+                                    config.id,
+                                    config.reset_default
+                                );
+                                
+                                countdown_end = None;
+                                publish_countdown_secs(&ctx, &config.id, 0);
+                                let reset_value = config.reset_default.unwrap_or(0.0).round() as i64;
+                                let reset_value_str = reset_value.to_string();
+                                let config_write = config.clone();
+                                let ctx_write = ctx.clone();
+                                tokio::spawn(async move {
+                                    tracing::info!(
+                                        "[{}] toggle countdown expired — writing reset_default={}",
+                                        config_write.id,
+                                        reset_value_str
+                                    );
+                                    let _ = crate::widgets::write_channel(
+                                        (*config_write).clone(),
+                                        reset_value_str,
+                                        ctx_write,
+                                    )
+                                    .await;
+                                });
+                            }
                             // Don't push an SSE update here; wait for the channel to echo
                             // back the written value so the button transitions directly
                             // from the last countdown tick to OFF with no "pressed" flash.
-                        } else if tx
-                            .send(
-                                render_inner_connected_with_countdown(&config, cv, countdown_secs, *enabled_rx.borrow())
-                                    .into_string(),
+                        } else {
+                            publish_countdown_secs(&ctx, &config.id, countdown_secs.unwrap_or(0));
+                            let html = render_inner_connected_with_countdown(
+                                &config,
+                                cv,
+                                countdown_secs,
+                                *enabled_rx.borrow(),
                             )
-                            .is_err()
-                        {
+                            .into_string();
+                            if !send_if_changed(&tx, &mut last_html, html) {
                             break;
+                            }
                         }
                     }
                 }

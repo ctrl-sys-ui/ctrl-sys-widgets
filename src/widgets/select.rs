@@ -51,10 +51,10 @@ impl Select {
         let mut last_html = String::new();
         while let Some(event) = stream.next().await {
             let html = match event {
-                ChannelEvent::Value(cv)          => render_inner_connected(&config, &cv).into_string(),
+                ChannelEvent::Value(cv)         => render_inner_connected(&config, &cv).into_string(),
                 ChannelEvent::Disconnected(_)
-                | ChannelEvent::Error(_)         => render_inner_disconnected(&config).into_string(),
-                ChannelEvent::Connected          => continue,
+                | ChannelEvent::Error(_)        => render_inner_disconnected(&config).into_string(),
+                ChannelEvent::Connected         => continue,
             };
             if html != last_html {
                 last_html = html.clone();
@@ -74,7 +74,7 @@ pub fn render_inner_connected(config: &WidgetConfig, cv: &ChannelValue) -> Marku
     };
     let current_index = cv.enum_index as usize;
     let choices = &cv.enum_choices;
-    let tooltip = super::build_tooltip(config, cv);
+    let tooltip = super::tooltips::build_enum_tooltip(config, cv);
     let display_text = choices.get(current_index).map(|s| s.trim().to_string())
         .unwrap_or_else(|| current_index.to_string());
 
@@ -98,13 +98,14 @@ pub fn render_inner_connected(config: &WidgetConfig, cv: &ChannelValue) -> Marku
                             option value=(current_index) selected { (current_index) }
                         }
                     }
+                    span class="status" {}
                     span class="select-display-text" { (display_text) }
                 }
             }
             label class="widget-label" {
                 (config.label)
                 @if !tooltip.is_empty() {
-                    (super::render_info_btn(&tooltip))
+                    (super::tooltips::render_tooltip_info_btn(&tooltip))
                 }
             }
         }

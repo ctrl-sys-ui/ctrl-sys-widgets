@@ -79,6 +79,9 @@ pub struct AppConfig {
 pub struct AppStartupConfig {
     #[serde(default)]
     pub desktop: DesktopStartupConfig,
+    #[cfg(feature = "modbus")]
+    #[serde(default)]
+    pub modbus_bridge: ModbusBridgeStartupConfig,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -126,6 +129,121 @@ impl Default for DesktopWindowConfig {
             height: None,
         }
     }
+}
+
+#[cfg(feature = "modbus")]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ModbusBridgeStartupConfig {
+    #[serde(default)]
+    pub enabled: bool,
+    #[serde(default = "default_modbus_bridge_listen_addr")]
+    pub listen_addr: String,
+    #[serde(default = "default_modbus_bridge_listen_port")]
+    pub listen_port: u16,
+    #[serde(default)]
+    pub upstream: Option<ModbusBridgeUpstreamConfig>,
+    #[serde(default)]
+    pub registers: Vec<ModbusBridgeRegisterMap>,
+}
+
+#[cfg(feature = "modbus")]
+impl Default for ModbusBridgeStartupConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            listen_addr: default_modbus_bridge_listen_addr(),
+            listen_port: default_modbus_bridge_listen_port(),
+            upstream: None,
+            registers: Vec::new(),
+        }
+    }
+}
+
+#[cfg(feature = "modbus")]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ModbusBridgeUpstreamConfig {
+    pub host: String,
+    #[serde(default = "default_modbus_port")]
+    pub port: u16,
+    #[serde(default = "default_unit_id")]
+    pub unit_id: u8,
+}
+
+#[cfg(feature = "modbus")]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ModbusBridgeRegisterMap {
+    pub exposed_register: u16,
+    pub register_type: ModbusRegisterType,
+    #[serde(default = "default_word_count")]
+    pub word_count: u8,
+    #[serde(default)]
+    pub source_widget_id: Option<String>,
+    #[serde(default)]
+    pub source_upstream_register: Option<u16>,
+    #[serde(default)]
+    pub source_upstream_register_type: Option<ModbusRegisterType>,
+    #[serde(default)]
+    pub target_upstream_register: Option<u16>,
+    #[serde(default)]
+    pub access: ModbusBridgeAccessMode,
+}
+
+#[cfg(feature = "modbus")]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WidgetServerConfig {
+    pub proxy_register: u16,
+    #[serde(default)]
+    pub access: ModbusBridgeAccessMode,
+    #[serde(default)]
+    pub target_upstream_register: Option<u16>,
+    /// Optional bridge-side protocol declaration.
+    ///
+    /// Required when widget protocol is not `modbus-tcp` (for example `local`) so
+    /// bridge register packing can be defined explicitly.
+    #[serde(default)]
+    pub protocol: Option<WidgetServerProtocolConfig>,
+}
+
+#[cfg(feature = "modbus")]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "type", rename_all = "kebab-case")]
+pub enum WidgetServerProtocolConfig {
+    ModbusTcp(WidgetServerModbusTcpConfig),
+    #[cfg(feature = "epics")]
+    EpicsPva(WidgetServerEpicsPvaConfig),
+}
+
+#[cfg(feature = "modbus")]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WidgetServerModbusTcpConfig {
+    pub register_type: ModbusRegisterType,
+    #[serde(default = "default_word_count")]
+    pub word_count: u8,
+}
+
+#[cfg(all(feature = "modbus", feature = "epics"))]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WidgetServerEpicsPvaConfig {
+    pub pv_name: String,
+}
+
+#[cfg(feature = "modbus")]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum ModbusBridgeAccessMode {
+    #[default]
+    ReadOnly,
+    ReadWrite,
+}
+
+#[cfg(feature = "modbus")]
+fn default_modbus_bridge_listen_addr() -> String {
+    "0.0.0.0".to_string()
+}
+
+#[cfg(feature = "modbus")]
+fn default_modbus_bridge_listen_port() -> u16 {
+    1502
 }
 
 fn default_allow_env_transport_override() -> bool {
@@ -195,6 +313,127 @@ impl AppConfig {
                 )));
             }
             ScreenConfig::validate_widgets(&screen.widgets, &mut seen_widget_ids)?;
+        }
+
+        #[cfg(feature = "modbus")]
+        Self::validate_modbus_bridge_config(config)?;
+
+        Ok(())
+    }
+
+    #[cfg(feature = "modbus")]
+    fn validate_modbus_bridge_config(config: &AppConfig) -> Result<(), ConfigError> {
+        let bridge = &config.startup.modbus_bridge;
+        if !bridge.enabled {
+            return Ok(());
+        }
+
+        if bridge.listen_addr.trim().is_empty() {
+            return Err(ConfigError::ValidationError(
+                "Invalid startup.modbus_bridge.listen_addr: value cannot be empty".to_string(),
+            ));
+        }
+
+        let mut seen = std::collections::HashSet::new();
+        let mut mapping_count = 0usize;
+        for m in &bridge.registers {
+            mapping_count += 1;
+            if !seen.insert(m.exposed_register) {
+                return Err(ConfigError::ValidationError(format!(
+                    "Duplicate startup.modbus_bridge mapping for register {}",
+                    m.exposed_register
+                )));
+            }
+
+            if m.source_widget_id.is_none() && m.source_upstream_register.is_none() {
+                return Err(ConfigError::ValidationError(format!(
+                    "Invalid startup.modbus_bridge mapping for register {}: one of source_widget_id or source_upstream_register is required",
+                    m.exposed_register
+                )));
+            }
+
+            if m.word_count == 0 {
+                return Err(ConfigError::ValidationError(format!(
+                    "Invalid startup.modbus_bridge mapping for register {}: word_count must be >= 1",
+                    m.exposed_register
+                )));
+            }
+
+            if m.access == ModbusBridgeAccessMode::ReadWrite
+                && m.target_upstream_register.is_none()
+            {
+                return Err(ConfigError::ValidationError(format!(
+                    "Invalid startup.modbus_bridge mapping for register {}: target_upstream_register is required for read_write access",
+                    m.exposed_register
+                )));
+            }
+
+            if m.access == ModbusBridgeAccessMode::ReadWrite && bridge.upstream.is_none() {
+                return Err(ConfigError::ValidationError(format!(
+                    "Invalid startup.modbus_bridge mapping for register {}: upstream config is required for read_write access",
+                    m.exposed_register
+                )));
+            }
+        }
+
+        for screen in &config.screens {
+            Self::validate_widget_proxy_mappings(
+                &screen.widgets,
+                bridge,
+                &mut seen,
+                &mut mapping_count,
+            )?;
+        }
+
+        if mapping_count == 0 {
+            return Err(ConfigError::ValidationError(
+                "Invalid startup.modbus_bridge: at least one mapping is required when bridge is enabled (either startup.modbus_bridge.registers or widget server.proxy_register)".to_string(),
+            ));
+        }
+
+        Ok(())
+    }
+
+    #[cfg(feature = "modbus")]
+    fn validate_widget_proxy_mappings(
+        widgets: &[WidgetConfig],
+        bridge: &ModbusBridgeStartupConfig,
+        seen: &mut std::collections::HashSet<u16>,
+        mapping_count: &mut usize,
+    ) -> Result<(), ConfigError> {
+        for widget in widgets {
+            if let Some(server) = &widget.server {
+                *mapping_count += 1;
+                if !seen.insert(server.proxy_register) {
+                    return Err(ConfigError::ValidationError(format!(
+                        "Duplicate modbus bridge mapping for register {}",
+                        server.proxy_register
+                    )));
+                }
+
+                if widget.modbus_tcp().is_none() {
+                    let is_local = matches!(widget.protocol, Some(ProtocolConfig::Local(_)));
+                    let has_server_protocol = server.protocol.is_some();
+                    if !is_local || !has_server_protocol {
+                        return Err(ConfigError::ValidationError(format!(
+                            "Widget '{}' has server.proxy_register but no bridge protocol format. For local widgets, set server.protocol={{\"type\":\"modbus-tcp\",...}} or server.protocol={{\"type\":\"epics-pva\",...}}",
+                            widget.id
+                        )));
+                    }
+                }
+
+                if server.access == ModbusBridgeAccessMode::ReadWrite && bridge.upstream.is_none()
+                {
+                    return Err(ConfigError::ValidationError(format!(
+                        "Widget '{}' has read_write server.proxy_register but startup.modbus_bridge.upstream is missing",
+                        widget.id
+                    )));
+                }
+            }
+
+            if let Some(children) = &widget.children {
+                Self::validate_widget_proxy_mappings(children, bridge, seen, mapping_count)?;
+            }
         }
         Ok(())
     }
@@ -377,6 +616,15 @@ pub struct WidgetConfig {
     /// Required for all data widgets; ignored for containers, e.g. Group.
     #[serde(default)]
     pub data_type: Option<String>,
+    /// Optional Modbus bridge server proxy settings.
+    ///
+    /// When set for a widget using `protocol.type = "modbus-tcp"`, this widget
+    /// is exposed by the embedded Modbus server on `proxy_register`.
+    /// The bridge automatically inherits register semantics from the widget
+    /// protocol (register type and poll behavior).
+    #[cfg(feature = "modbus")]
+    #[serde(default)]
+    pub server: Option<WidgetServerConfig>,
     #[serde(default)]
     pub description: Option<String>,
     #[serde(default)]
@@ -431,10 +679,11 @@ pub struct WidgetConfig {
     /// Accepted values: `"green"`, `"red"`, `"blue"` (default).
     #[serde(default)]
     pub color: Option<String>,
-    /// Value written to the channel when a button is clicked.
+    /// Value written to the channel when a widget is actioned. 
+    /// For example, when a button is clicked. 
     /// Defaults to `1` (ON). Set to `0` for a button that writes OFF/close.
     #[serde(default)]
-    pub write_value: Option<u16>,
+    pub write_value: Option<f64>,
     /// Optional delayed auto-reset for `toggle_button` writes, in milliseconds.
     ///
     /// When set to a non-zero value, a toggle write is followed by an automatic
@@ -446,7 +695,7 @@ pub struct WidgetConfig {
     /// Used by `toggle_button` when `reset_timeout` is set to a non-zero value.
     /// If omitted, the reset target defaults to `0`.
     #[serde(default)]
-    pub reset_default: Option<i64>,
+    pub reset_default: Option<f64>,
 }
 
 impl WidgetConfig {
@@ -591,8 +840,10 @@ pub enum WidgetType {
     Select,
     Group,
     /// Multi-state polygon LED: open (green) / closed (red) / pending (grey).
-    /// Shape defaults to a rectangle; override with `polygon_points` for a bowtie.
+    /// Shape defaults to a rectangle; override with `polygon_points`.
     MultiStateLed,
+    /// Hidden widget type used for hold values internally. Not rendered in the UI.
+    Hidden,
 }
 
 /// Explicit container size for Group widgets (applied as inline min-width/min-height)

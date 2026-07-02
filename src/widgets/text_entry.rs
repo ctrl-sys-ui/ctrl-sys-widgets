@@ -82,7 +82,7 @@ pub fn render_inner_connected(config: &WidgetConfig, cv: &ChannelValue) -> Marku
             .filter(|&s| s > 0.0)
             .unwrap_or(precision_step)
     };
-    let tooltip = super::build_tooltip(config, cv);
+    let tooltip = super::tooltips::build_tooltip(config, cv);
     render_input_html(config, &cv.value_str, &cv.units, min_step, is_string,
                       &format!("text-entry {}", alarm_class), icon, false, &tooltip)
 }

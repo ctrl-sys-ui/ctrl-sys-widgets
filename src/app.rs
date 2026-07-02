@@ -126,6 +126,51 @@ impl AppState {
             .route("/stream/widget/{widget_id}", get(stream_widget))
             .route("/api/widget/{widget_id}/set", post(write_widget))
     }
+
+    /// Force a value of a widget by ID.
+    ///
+    /// The change propagates overriding the UI. 
+    /// This can be used to programmatically set a widget value from app logic.
+    /// 
+    /// Sometimes can be useful to reset a previously set value like a cancelling a button press or resetting a toggle button.
+    /// 
+    /// This can only be used for widgets that have a `write` protocol configured, otherwise it will have no effect.
+    /// ```rust
+    /// state.force_widget_value("cmd_arm", 0.0); // force the "cmd_arm" button to its default state
+    /// ```
+    pub fn force_widget_value(&self, widget_id: &str, value: f64) {
+        // Look up the widget config. Use collect_data_widgets so Group children are included.
+        let widget = self
+            .config
+            .screens
+            .iter()
+            .flat_map(|s| widgets::collect_data_widgets(&s.widgets))
+            .find(|w| w.id == widget_id);
+
+        match widget {
+            None => {
+                tracing::warn!("Widget '{}' not found in config, cannot force value", widget_id);
+            }
+            Some(w) => match w.widget_type {
+                WidgetType::Button | WidgetType::ToggleButton | WidgetType::Slider | WidgetType::Select => {
+                    let value_str = match w.widget_type {
+                        WidgetType::Button | WidgetType::ToggleButton | WidgetType::Select => {
+                            format!("{}", value.trunc() as i64)
+                        }
+                        _ => format!("{}", value),
+                    };
+                    let ctx = self.channel_ctx.clone();
+                    tracing::info!("Widget '{}' force-writing value {}", w.id, value);
+                    tokio::spawn(async move {
+                        widgets::write_channel(w, value_str, ctx).await;
+                    });
+                }
+                _ => {
+                    tracing::warn!("Widget '{}' is not a writable type, cannot force value", widget_id);
+                }
+            },
+        }
+    }
 }
 
 // --- SSE type alias ----------------------------------------------------------
@@ -203,13 +248,15 @@ fn maybe_schedule_toggle_reset(
         return;
     }
 
-    let reset_value = widget.reset_default.unwrap_or(0).to_string();
+    // Making sure toggle button always writes an integer value to the channel, so we can safely cast to i64 here.
+    let reset_value = widget.reset_default.unwrap_or(0.0).round() as i64;
+    let reset_value_str = reset_value.to_string();
     let widget_id = widget.id.clone();
 
     // Spawn a fire-and-forget async task to reset the toggle after the timeout.
     tokio::spawn(async move {
         tokio::time::sleep(std::time::Duration::from_millis(timeout_ms)).await;
-        let result = widgets::write_channel(widget, reset_value, channel_ctx).await;
+        let result = widgets::write_channel(widget, reset_value_str, channel_ctx).await;
         tracing::info!(
             "[{}] toggle reset_timeout elapsed; reset_default write result html: {}",
             widget_id,
@@ -400,20 +447,17 @@ pub async fn stream_widget(
         WidgetType::Led => Box::pin(widgets::led::Led::new(config).into_sse_stream(ctx)),
         WidgetType::Slider => Box::pin(widgets::slider::Slider::new(config).into_sse_stream(ctx)),
         WidgetType::Button => Box::pin(widgets::button::Button::new(config).into_sse_stream(ctx)),
-        WidgetType::ToggleButton => {
-            Box::pin(widgets::toggle_button::ToggleButton::new(config).into_sse_stream(ctx))
-        }
+        WidgetType::ToggleButton => Box::pin(widgets::toggle_button::ToggleButton::new(config).into_sse_stream(ctx)),
         WidgetType::Chart => Box::pin(widgets::chart::Chart::new(config).into_sse_stream(ctx)),
         WidgetType::Select => Box::pin(widgets::select::Select::new(config).into_sse_stream(ctx)),
-        WidgetType::MultiStateLed => {
-            Box::pin(widgets::multi_state_led::MultiStateLed::new(config).into_sse_stream(ctx))
-        }
+        WidgetType::MultiStateLed => Box::pin(widgets::multi_state_led::MultiStateLed::new(config).into_sse_stream(ctx)),
         WidgetType::Group => {
             let stream: SseStream = Box::pin(async_stream::stream! {
                 yield Ok(Event::default().data("<!-- group widget has no stream -->"));
             });
             return Sse::new(stream).keep_alive(KeepAlive::default());
         }
+        WidgetType::Hidden => Box::pin(widgets::hidden::Hidden::new(config).into_sse_stream(ctx)),
     };
     Sse::new(stream).keep_alive(KeepAlive::default())
 }
