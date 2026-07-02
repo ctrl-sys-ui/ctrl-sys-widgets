@@ -79,6 +79,9 @@ pub struct AppConfig {
 pub struct AppStartupConfig {
     #[serde(default)]
     pub desktop: DesktopStartupConfig,
+    /// When true, widget tooltips show adaptor/proxy addresses instead of PLC/channel addresses.
+    #[serde(default)]
+    pub tooltip_use_adaptor_address: bool,
     #[cfg(feature = "modbus")]
     #[serde(default)]
     pub modbus_bridge: ModbusBridgeStartupConfig,

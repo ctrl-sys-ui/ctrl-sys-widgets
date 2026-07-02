@@ -27,7 +27,7 @@ impl TextEntry {
 
         async_stream::stream! {
             yield Ok(axum::response::sse::Event::default().data(
-                render_inner_disconnected(&config, "Connecting...").into_string()
+                render_inner_disconnected(&config, "Connecting...", None).into_string()
             ));
             let mut rx = rx;
             while let Some(html) = rx.recv().await {
@@ -41,27 +41,52 @@ impl TextEntry {
         ctx: Arc<ChannelContext>,
         tx: tokio::sync::mpsc::UnboundedSender<String>,
     ) {
+        let mut enabled_rx = ctx.subscribe_widget_enabled(&config.id);
         let ctx_clone = ctx.clone();
         let widget_id = config.id.clone();
+        let ctx_publish = ctx_clone.clone();
+        let widget_id_publish = widget_id.clone();
         let mut stream = crate::channel::channel_stream(config.clone(), ctx)
             .inspect(move |e| {
                 if let ChannelEvent::Value(cv) = e {
-                    ctx_clone.publish_widget_value(&widget_id, cv.clone());
+                    ctx_publish.publish_widget_value(&widget_id_publish, cv.clone());
                 }
             });
+        let mut last_value: Option<ChannelValue> = None;
         while let Some(event) = stream.next().await {
             let html = match event {
-                ChannelEvent::Value(cv)          => render_inner_connected(&config, &cv).into_string(),
+                ChannelEvent::Value(cv)          => {
+                    ctx_clone.set_widget_connected(&widget_id, true);
+                    last_value = Some(cv.clone());
+                    render_inner_connected(&config, &cv, *enabled_rx.borrow()).into_string()
+                }
                 ChannelEvent::Disconnected(msg)
-                | ChannelEvent::Error(msg)       => render_inner_disconnected(&config, &msg).into_string(),
-                ChannelEvent::Connected          => continue,
+                | ChannelEvent::Error(msg)       => {
+                    ctx_clone.set_widget_connected(&widget_id, false);
+                    render_inner_disconnected(&config, &msg, last_value.as_ref()).into_string()
+                }
+                ChannelEvent::Connected          => {
+                    ctx_clone.set_widget_connected(&widget_id, true);
+                    continue;
+                }
             };
             if tx.send(html).is_err() { break; }
+
+            while enabled_rx.has_changed().unwrap_or(false) {
+                if enabled_rx.changed().await.is_err() {
+                    break;
+                }
+                let html = match &last_value {
+                    Some(cv) => render_inner_connected(&config, cv, *enabled_rx.borrow()).into_string(),
+                    None => render_inner_disconnected(&config, "Connecting...", None).into_string(),
+                };
+                if tx.send(html).is_err() { break; }
+            }
         }
     }
 }
 
-pub fn render_inner_connected(config: &WidgetConfig, cv: &ChannelValue) -> Markup {
+pub fn render_inner_connected(config: &WidgetConfig, cv: &ChannelValue, enabled: bool) -> Markup {
     let alarm_class = super::alarm_severity_class(cv.alarm_severity);
     let icon: Option<&str> = match cv.alarm_severity {
         0 => None,
@@ -84,12 +109,20 @@ pub fn render_inner_connected(config: &WidgetConfig, cv: &ChannelValue) -> Marku
     };
     let tooltip = super::tooltips::build_tooltip(config, cv);
     render_input_html(config, &cv.value_str, &cv.units, min_step, is_string,
-                      &format!("text-entry {}", alarm_class), icon, false, &tooltip)
+                      &format!("text-entry {}", alarm_class), icon, !enabled, &tooltip)
 }
 
-pub fn render_inner_disconnected(config: &WidgetConfig, _reason: &str) -> Markup {
+pub fn render_inner_disconnected(
+    config: &WidgetConfig,
+    _reason: &str,
+    last_value: Option<&ChannelValue>,
+) -> Markup {
     let is_string = config.data_type.as_deref() == Some("string");
-    render_input_html(config, "--", "", 0.01, is_string,
+    let (value, units) = match last_value {
+        Some(cv) if !cv.value_str.is_empty() => (cv.value_str.as_str(), cv.units.as_str()),
+        _ => ("--", ""),
+    };
+    render_input_html(config, value, units, 0.01, is_string,
                       "text-entry alarm-disconnected", Some(super::OFFLINE_SVG), true, "")
 }
 
@@ -106,7 +139,7 @@ fn render_input_html(
 ) -> Markup {
     let input_type = if is_string { "text" } else { "number" };
     html! {
-        div class="widget-inner" {
+        div class="widget-inner" data-widget-enabled=(if disabled { "false" } else { "true" }) {
             div class="text-entry-with-icon-container" {
                 @if is_string {
                     input type="text"
@@ -158,8 +191,9 @@ pub fn render_text_entry(widget: &WidgetConfig) -> Markup {
         div style=[super::widget_container_style(widget)]
             data-widget-id=(widget.id)
             data-ch=(widget.channel_address())
+            data-widget-enabled="false"
             hx-sse=(format!("swap:{}", widget.id)) {
-            (render_inner_disconnected(widget, "Connecting..."))
+            (render_inner_disconnected(widget, "Connecting...", None))
         }
     }
 }

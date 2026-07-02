@@ -330,6 +330,15 @@
             return;
         }
 
+        if (element.disabled) {
+            return;
+        }
+
+        const widgetInner = element.closest('.widget-inner');
+        if (widgetInner && widgetInner.getAttribute('data-widget-enabled') === 'false') {
+            return;
+        }
+
         event.preventDefault();
         event.stopPropagation();
 
@@ -338,6 +347,19 @@
         }
 
         ipcWidgetWrite(element, value);
+    }
+
+    function isDisabledWidgetWriteElement(element) {
+        if (!element || !element.matches || !element.matches('[hx-post^="/api/widget/"]')) {
+            return false;
+        }
+
+        if (element.disabled) {
+            return true;
+        }
+
+        const widgetInner = element.closest('.widget-inner');
+        return !!(widgetInner && widgetInner.getAttribute('data-widget-enabled') === 'false');
     }
 
     function bindWidgetWrite(element) {
@@ -507,6 +529,15 @@
                 const verb = String(event.detail.verb || '').toUpperCase();
                 if (verb !== 'GET') {
                     event.detail.headers['x-mycela-session-token'] = loopbackToken();
+                }
+            });
+        }
+
+        if (window.htmx) {
+            document.body.addEventListener('htmx:beforeRequest', function(event) {
+                const source = event.detail && event.detail.elt;
+                if (isDisabledWidgetWriteElement(source)) {
+                    event.preventDefault();
                 }
             });
         }

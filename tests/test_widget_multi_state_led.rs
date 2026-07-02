@@ -1,7 +1,11 @@
 mod test_widget_multi_state_led {
     use mycela::channel::ChannelValue;
     use mycela::config::{WidgetConfig, WidgetType};
-    use mycela::widgets::multi_state_led::{render_inner_connected, render_inner_pending};
+    use mycela::widgets::multi_state_led::{
+        render_inner_connected,
+        render_inner_pending,
+        render_inner_pending_with_last,
+    };
     use mycela::widgets::{MAJOR_ALARM_SVG, MINOR_ALARM_SVG, OFFLINE_SVG};
 
     fn w() -> WidgetConfig {
@@ -36,6 +40,14 @@ mod test_widget_multi_state_led {
     fn test_pending_state_renders_double_dash_label() {
         let html = render_inner_pending(&w()).into_string();
         assert!(html.contains("--"), "got: {html}");
+    }
+
+    #[test]
+    fn test_pending_state_keeps_last_known_state_when_available() {
+        let cv = ChannelValue { raw_value: 1.0, ..ChannelValue::default() };
+        let html = render_inner_pending_with_last(&w(), Some(&cv)).into_string();
+        assert!(html.contains("vs-open"), "got: {html}");
+        assert!(html.contains("OPEN"), "got: {html}");
     }
 
     #[test]

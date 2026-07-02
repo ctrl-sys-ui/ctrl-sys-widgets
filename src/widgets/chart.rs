@@ -543,17 +543,23 @@ impl Chart {
     ) {
         let ctx_clone = ctx.clone();
         let widget_id = config.id.clone();
+        let ctx_publish = ctx_clone.clone();
+        let widget_id_publish = widget_id.clone();
         let mut stream = crate::channel::channel_stream(config.clone(), ctx)
             .inspect(move |e| {
                 if let ChannelEvent::Value(cv) = e {
-                    ctx_clone.publish_widget_value(&widget_id, cv.clone());
+                    ctx_publish.publish_widget_value(&widget_id_publish, cv.clone());
                 }
             });
+        let mut last_value: Option<ChannelValue> = None;
         while let Some(event) = stream.next().await {
             let html = match event {
-                ChannelEvent::Value(cv) => render_inner_connected(&config, &cv).into_string(),
+                ChannelEvent::Value(cv) => {
+                    last_value = Some(cv.clone());
+                    render_inner_connected(&config, &cv).into_string()
+                }
                 ChannelEvent::Disconnected(_) | ChannelEvent::Error(_) => {
-                    render_inner_disconnected(&config).into_string()
+                    render_inner_disconnected_with_last(&config, last_value.as_ref()).into_string()
                 }
                 ChannelEvent::Connected => continue,
             };
@@ -671,6 +677,55 @@ fn collect_series_pvs(config: &WidgetConfig) -> Vec<String> {
     }
 }
 
+fn render_svg_for_cv(config: &WidgetConfig, cv: &ChannelValue) -> String {
+    if !cv.named_series.is_empty() {
+        let x_label = config.axis_label_x.as_deref().unwrap_or("");
+        let y_label = config.axis_label_y.as_deref().unwrap_or("");
+        let all_pvs = collect_series_pvs(config);
+        let series_vecs: Vec<(&str, Vec<f64>)> = all_pvs
+            .iter()
+            .filter_map(|pv| {
+                cv.named_series
+                    .iter()
+                    .find(|(n, _)| n == pv)
+                    .map(|(_, v)| (pv.as_str(), v.clone()))
+            })
+            .collect();
+        let series_refs: Vec<(&str, &[f64])> = series_vecs
+            .iter()
+            .map(|(n, v)| (*n, v.as_slice()))
+            .collect();
+        return render_line_chart(&series_refs, x_label, y_label);
+    }
+
+    let chart_type = config.chart_type.as_deref().unwrap_or("line");
+    let x_label = config.axis_label_x.as_deref().unwrap_or("");
+    let y_label = config.axis_label_y.as_deref().unwrap_or("");
+
+    match chart_type {
+        "histogram" => render_histogram(&cv.array_values, x_label, y_label),
+        "scatter" => {
+            let arr = &cv.array_values;
+            if arr.len() >= 2 {
+                let mid = arr.len() / 2;
+                render_scatter(&arr[..mid], &arr[mid..], x_label, y_label)
+            } else {
+                render_scatter(&[], &[], x_label, y_label)
+            }
+        }
+        "scatter_histogram" => {
+            let arr = &cv.array_values;
+            if arr.len() >= 2 {
+                let mid = arr.len() / 2;
+                render_scatter_histogram(&arr[..mid], &arr[mid..], x_label, y_label)
+            } else {
+                render_scatter_histogram(&[], &[], x_label, y_label)
+            }
+        }
+        _ => render_line_chart(&[("value", cv.array_values.as_slice())], x_label, y_label),
+    }
+}
+
 pub fn render_inner_connected(config: &WidgetConfig, cv: &ChannelValue) -> Markup {
     let alarm_class = super::alarm_severity_class(cv.alarm_severity);
     let icon: Option<&str> = match cv.alarm_severity {
@@ -774,13 +829,20 @@ pub fn render_inner_connected(config: &WidgetConfig, cv: &ChannelValue) -> Marku
 }
 
 pub fn render_inner_disconnected(config: &WidgetConfig) -> Markup {
+    render_inner_disconnected_with_last(config, None)
+}
+
+pub fn render_inner_disconnected_with_last(config: &WidgetConfig, last_value: Option<&ChannelValue>) -> Markup {
+    let svg_content = last_value
+        .map(|cv| render_svg_for_cv(config, cv))
+        .unwrap_or_default();
     render_chart_html(
         config,
         None,
         "chart alarm-disconnected",
         Some(super::OFFLINE_SVG),
         "",
-        "",
+        &svg_content,
     )
 }
 

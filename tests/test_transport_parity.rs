@@ -103,6 +103,42 @@ mod test_transport_parity {
     }
 
     #[tokio::test]
+    async fn test_widget_write_rejected_when_widget_disabled() {
+        let widget = WidgetConfig {
+            id: "w1".to_string(),
+            widget_type: WidgetType::Button,
+            label: "Widget 1".to_string(),
+            ..Default::default()
+        };
+        let state = make_app_state_with_widget(widget);
+        state.set_widget_enabled("w1", false);
+
+        let (status, markup) = write_widget_markup(&state, "w1", "1".to_string()).await;
+        let html = markup.into_string();
+
+        assert_eq!(status, StatusCode::FORBIDDEN);
+        assert!(html.contains("Widget is disabled"), "got: {html}");
+    }
+
+    #[tokio::test]
+    async fn test_widget_write_rejected_when_widget_disconnected() {
+        let widget = WidgetConfig {
+            id: "w1".to_string(),
+            widget_type: WidgetType::Button,
+            label: "Widget 1".to_string(),
+            ..Default::default()
+        };
+        let state = make_app_state_with_widget(widget);
+        state.channel_ctx.set_widget_connected("w1", false);
+
+        let (status, markup) = write_widget_markup(&state, "w1", "1".to_string()).await;
+        let html = markup.into_string();
+
+        assert_eq!(status, StatusCode::FORBIDDEN);
+        assert!(html.contains("Widget is disconnected"), "got: {html}");
+    }
+
+    #[tokio::test]
     async fn test_epics_status_parity_http_and_ipc_when_stopped() {
         let widget = WidgetConfig {
             id: "w1".to_string(),

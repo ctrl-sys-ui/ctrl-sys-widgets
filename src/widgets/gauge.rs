@@ -42,17 +42,23 @@ impl Gauge {
     ) {
         let ctx_clone = ctx.clone();
         let widget_id = config.id.clone();
+        let ctx_publish = ctx_clone.clone();
+        let widget_id_publish = widget_id.clone();
         let mut stream = crate::channel::channel_stream(config.clone(), ctx)
             .inspect(move |e| {
                 if let ChannelEvent::Value(cv) = e {
-                    ctx_clone.publish_widget_value(&widget_id, cv.clone());
+                    ctx_publish.publish_widget_value(&widget_id_publish, cv.clone());
                 }
             });
+        let mut last_value: Option<ChannelValue> = None;
         while let Some(event) = stream.next().await {
             let html = match event {
-                ChannelEvent::Value(cv) => render_inner_connected(&config, &cv).into_string(),
+                ChannelEvent::Value(cv) => {
+                    last_value = Some(cv.clone());
+                    render_inner_connected(&config, &cv).into_string()
+                }
                 ChannelEvent::Disconnected(_) | ChannelEvent::Error(_) => {
-                    render_inner_disconnected(&config).into_string()
+                    render_inner_disconnected_with_last(&config, last_value.as_ref()).into_string()
                 }
                 ChannelEvent::Connected => continue,
             };
@@ -124,6 +130,63 @@ pub fn render_inner_connected(config: &WidgetConfig, cv: &ChannelValue) -> Marku
 }
 
 pub fn render_inner_disconnected(config: &WidgetConfig) -> Markup {
+    render_inner_disconnected_with_last(config, None)
+}
+
+pub fn render_inner_disconnected_with_last(config: &WidgetConfig, last_value: Option<&ChannelValue>) -> Markup {
+    if let Some(cv) = last_value {
+        let display_value = if cv.value_str.is_empty() {
+            format!("{:.prec$}", cv.raw_value, prec = cv.precision as usize)
+        } else {
+            cv.value_str.clone()
+        };
+        let min = cv.display_low;
+        let max = if (cv.display_high - cv.display_low).abs() < f64::EPSILON {
+            cv.display_low + 100.0
+        } else {
+            cv.display_high
+        };
+        let percentage = ((cv.raw_value - min) / (max - min) * 100.0).clamp(0.0, 100.0);
+        let range = max - min;
+        let to_pct = |v: f64| ((v - min) / range * 100.0).clamp(0.0, 100.0);
+        let low_alarm = if cv.low_alarm_limit != 0.0 {
+            Some((cv.low_alarm_limit, to_pct(cv.low_alarm_limit)))
+        } else {
+            None
+        };
+        let low_warn = if cv.low_warn_limit != 0.0 {
+            Some((cv.low_warn_limit, to_pct(cv.low_warn_limit)))
+        } else {
+            None
+        };
+        let high_warn = if cv.high_warn_limit != 100.0 {
+            Some((cv.high_warn_limit, to_pct(cv.high_warn_limit)))
+        } else {
+            None
+        };
+        let high_alarm = if cv.high_alarm_limit != 100.0 {
+            Some((cv.high_alarm_limit, to_pct(cv.high_alarm_limit)))
+        } else {
+            None
+        };
+
+        return render_gauge_html(
+            config,
+            &display_value,
+            &cv.units,
+            min,
+            max,
+            percentage,
+            "gauge alarm-disconnected",
+            Some(super::OFFLINE_SVG),
+            low_alarm,
+            low_warn,
+            high_warn,
+            high_alarm,
+            "",
+        );
+    }
+
     render_gauge_html(
         config,
         "--",

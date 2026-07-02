@@ -42,17 +42,25 @@ impl Led {
     ) {
         let ctx_clone = ctx.clone();
         let widget_id = config.id.clone();
+        let ctx_publish = ctx_clone.clone();
+        let widget_id_publish = widget_id.clone();
         let mut stream = crate::channel::channel_stream(config.clone(), ctx)
             .inspect(move |e| {
                 if let ChannelEvent::Value(cv) = e {
-                    ctx_clone.publish_widget_value(&widget_id, cv.clone());
+                    ctx_publish.publish_widget_value(&widget_id_publish, cv.clone());
                 }
             });
+        let mut last_value: Option<ChannelValue> = None;
         while let Some(event) = stream.next().await {
             let html = match event {
-                ChannelEvent::Value(cv)          => render_inner_connected(&config, &cv).into_string(),
+                ChannelEvent::Value(cv)          => {
+                    last_value = Some(cv.clone());
+                    render_inner_connected(&config, &cv).into_string()
+                }
                 ChannelEvent::Disconnected(_)
-                | ChannelEvent::Error(_)         => render_inner_disconnected(&config).into_string(),
+                | ChannelEvent::Error(_)         => {
+                    render_inner_disconnected_with_last(&config, last_value.as_ref()).into_string()
+                }
                 ChannelEvent::Connected          => continue,
             };
             if tx.send(html).is_err() { break; }
@@ -79,15 +87,26 @@ pub fn render_inner_connected(config: &WidgetConfig, cv: &ChannelValue) -> Marku
 }
 
 pub fn render_inner_disconnected(config: &WidgetConfig) -> Markup {
+    render_inner_disconnected_with_last(config, None)
+}
+
+pub fn render_inner_disconnected_with_last(config: &WidgetConfig, last_value: Option<&ChannelValue>) -> Markup {
+    let invert = config.invert.unwrap_or(false);
+    let is_on = match last_value {
+        Some(cv) if cv.raw_value == 0.0 => false ^ invert,
+        Some(cv) if cv.raw_value == 1.0 => true ^ invert,
+        Some(cv) => cv.raw_value > 0.5,
+        None => false,
+    };
     let tooltip = super::tooltips::build_disconnected_tooltip(config);
-    render_led_html(config, false, Some(super::OFFLINE_SVG), true, &tooltip)
+    render_led_html(config, is_on, Some(super::OFFLINE_SVG), true, &tooltip)
 }
 
 fn render_led_html(
     config: &WidgetConfig,
     is_on: bool,
     icon: Option<&str>,
-    disconnected: bool,
+    _disconnected: bool,
     tooltip: &str,
 ) -> Markup {
     let led_state = if is_on { "led-on" } else { "led-off" };
@@ -98,8 +117,7 @@ fn render_led_html(
                     span class="led-light" {}
                 }
                 span class="led-status" {
-                    @if disconnected { "--" }
-                    @else if is_on { "ON" }
+                    @if is_on { "ON" }
                     @else { "OFF" }
                 }
             }
