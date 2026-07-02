@@ -1,4 +1,36 @@
 use maud::html;
+use std::sync::atomic::{AtomicBool, Ordering};
+
+static USE_ADAPTOR_ADDRESS: AtomicBool = AtomicBool::new(false);
+
+pub fn set_use_adaptor_address(enabled: bool) {
+    USE_ADAPTOR_ADDRESS.store(enabled, Ordering::Relaxed);
+}
+
+pub fn use_adaptor_address() -> bool {
+    USE_ADAPTOR_ADDRESS.load(Ordering::Relaxed)
+}
+
+fn tooltip_address_label() -> &'static str {
+    if use_adaptor_address() {
+        "Adaptor Address"
+    } else {
+        "Channel"
+    }
+}
+
+fn tooltip_address(config: &crate::config::WidgetConfig) -> String {
+    if use_adaptor_address() {
+        #[cfg(feature = "modbus")]
+        {
+            if let Some(server) = &config.server {
+                return format!("proxy-register {}", server.proxy_register);
+            }
+        }
+    }
+
+    config.channel_address()
+}
 
 
 /// Build a tooltip string from a `ChannelValue` — shared by all widgets.
@@ -16,7 +48,7 @@ pub(super) fn build_tooltip(config: &crate::config::WidgetConfig, cv: &crate::ch
     };
     t.push_str(&format!("ID: {}\n", config.id));
     t.push_str(&format!("Protocol: {}\n", protocol_label));
-    t.push_str(&format!("Channel: {}\n", config.channel_address()));
+    t.push_str(&format!("{}: {}\n", tooltip_address_label(), tooltip_address(config)));
 
     if !cv.primary_meta.description.is_empty() {
         t.push_str(&cv.primary_meta.description);
@@ -69,9 +101,11 @@ fn tooltip_for_boolean_channel(config: &crate::config::WidgetConfig, cv: &crate:
         _ => "Invalid",
     };
     format!(
-        "ID: {}\nProtocol: {}\nAlarm Severity: {}\nAlarm Status: {}",
+        "ID: {}\nProtocol: {}\n{}: {}\nAlarm Severity: {}\nAlarm Status: {}",
         config.id,
         config.channel_address(),
+        tooltip_address_label(),
+        tooltip_address(config),
         sev_str,
         crate::widgets::alarm_status_str(cv.alarm_status),
     )
@@ -105,11 +139,11 @@ pub (super) fn build_enum_tooltip(config: &crate::config::WidgetConfig, cv: &cra
 /// Build a minimal tooltip for a disconnected widget — shows ID and channel address
 /// so the info button appears and is useful even before a connection is established.
 pub(super) fn build_disconnected_tooltip(config: &crate::config::WidgetConfig) -> String {
-    let ch = config.channel_address();
+    let ch = tooltip_address(config);
     if ch.is_empty() {
         format!("ID: {}\nStatus: Disconnected", config.id)
     } else {
-        format!("ID: {}\nChannel: {}\nStatus: Disconnected", config.id, ch)
+        format!("ID: {}\n{}: {}\nStatus: Disconnected", config.id, tooltip_address_label(), ch)
     }
 }
 

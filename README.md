@@ -2,14 +2,15 @@
 
 *Named from mycelium — the vast, silent network that binds an ecosystem together.*
 
-Mycela is a Rust framework for distributed control system UIs, combining an Axum web server, multiple industrial SCADA protocols (EPICS, Modbus TCP, etc.) behind an SSE/HTMX front-end with an optional desktop WebView shell. Built in Rust — because speed and memory safety are not optional in systems that matter.
+Mycela is a Rust framework for distributed control system UIs, combining an Axum web server, multiple industrial SCADA protocols (EPICS, Modbus TCP, etc.) behind an SSE/HTMX front-end with an optional desktop WebView shell. Built in Rust — because speed and memory safety are not optional in industrial control.
 
 ### Key Benefits
 
 - **Simple & Fast** — HTMX + SSE for real-time updates
-- **Multi-protocol** — EPICS PVAccess and Modbus TCP supported out of the box
-- **Alarm aware** — Full alarm severity display (MAJOR / MINOR / INVALID / OFFLINE)
-- **Airgap ready** — All assets (HTMX, fonts, CSS) are embedded in the executable.
+- **Multi-protocol** — EPICS PVAccess and Modbus TCP supported out of the box. More to come (OPC UA, MQTT, etc.)
+- **Alarm aware** — Full alarm severity display (MAJOR / MINOR / INVALID / OFFLINE).
+- **Airgap ready** — All assets (HTMX, fonts, CSS) are embedded in the executable. Simple deployment to isolated networks. Not to be used as a web service on the public internet.
+
 
 ## Quick Start
 
@@ -99,48 +100,6 @@ Verification checklist after deploy:
 - No `Axum server bound on port ...` log line in IPC mode
 - EPICS/Modbus widgets connect and update normally
 
-## Project Structure
-
-```
-mycela/
-├── src/
-│   ├── lib.rs            # Crate root and feature gates
-│   ├── channel.rs        # Protocol-independent ChannelValue type
-│   ├── config.rs         # JSON config types (ScreenConfig, WidgetConfig, ProtocolConfig)
-│   ├── logging.rs        # Shared logging init (stdout + daily rolling file)
-│   ├── epics_channel.rs  # PVXS monitor integration   [feature: epics]
-│   ├── modbus_client.rs  # Modbus TCP connection pool  [feature: modbus]
-│   ├── server_setup.rs   # Embedded PVXS server setup  [feature: epics]
-│   └── widgets/          # Maud HTML widget renderers
-│       ├── mod.rs
-│       ├── button.rs
-│       ├── chart.rs
-│       ├── gauge.rs
-│       ├── group.rs
-│       ├── led.rs
-│       ├── select.rs
-│       ├── slider.rs
-│       ├── text_entry.rs
-│       ├── text_update.rs
-│       └── toggle_button.rs
-├── examples/
-│   ├── demo_config.json       # Widget screen configuration
-│   ├── demo_server/
-│   │   ├── main.rs            # Axum routes and handlers
-│   │   ├── epics_simulator.rs # Simulated EPICS PV data
-│   │   └── modbus_simulator.rs
-│   └── demo_desktop/
-│       ├── main.rs            # Desktop entry point (winit + wry)
-│       └── assets.rs          # Static files embedded via include_bytes!
-├── static/
-│   ├── htmx.min.js
-│   ├── style.css
-│   ├── tooltip.js
-│   └── fonts/             # Self-hosted Inter + IBM Plex Mono
-├── tests/                 # Unit test suite
-└── Cargo.toml
-```
-
 ## Widgets
 
 | Widget | Description |
@@ -162,7 +121,7 @@ All widgets reflect channel state through border colour and status icons:
 
 | State | Indicator |
 |-------|-----------|
-| Connected, no alarm | Green border |
+| Connected, no alarm | No extra border |
 | Minor alarm (Hi / Lo) | Orange border + warning icon |
 | Major alarm (HiHi / LoLo) | Red border + alarm icon |
 | Disconnected / offline | Cyan border, input disabled |
