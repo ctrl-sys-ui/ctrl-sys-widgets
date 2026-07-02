@@ -504,6 +504,13 @@ textarea, input, button, select { font-family: inherit; font-size: inherit; }
     background: #f0f0f0;
 }
 
+/* Keep disconnected value readable while still clearly non-interactive. */
+.text-entry.alarm-disconnected:disabled {
+    opacity: 1;
+    background: var(--input-readonly-bg);
+    color: var(--input-readonly-text);
+}
+
 /* Hide spinner arrows for number inputs */
 input[type="number"]::-webkit-inner-spin-button,
 input[type="number"]::-webkit-outer-spin-button {
@@ -923,6 +930,19 @@ input[type="number"] {
     transform: translateY(0);
 }
 
+.widget-button:disabled {
+    cursor: not-allowed;
+    opacity: 0.55;
+    filter: saturate(0.65);
+}
+
+.widget-button:disabled:hover,
+.widget-button:disabled:active {
+    transform: none;
+    box-shadow: none;
+    background: inherit;
+}
+
 /* Button colour variants */
 .widget-button--green {
     background: #0d2e1a;
@@ -1013,6 +1033,11 @@ input[type="number"] {
     outline: none;
 }
 
+.widget-slider:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
 .widget-slider::-webkit-slider-thumb {
     -webkit-appearance: none;
     appearance: none;
@@ -1022,6 +1047,12 @@ input[type="number"] {
     border-radius: 50%;
     cursor: pointer;
     transition: all 0.2s;
+}
+
+.widget-slider:disabled::-webkit-slider-thumb {
+    background: #777;
+    cursor: not-allowed;
+    transform: none;
 }
 
 .widget-slider::-webkit-slider-thumb:hover {
@@ -1035,6 +1066,11 @@ input[type="number"] {
     border-radius: 50%;
     cursor: pointer;
     border: none;
+}
+
+.widget-slider:disabled::-moz-range-thumb {
+    background: #777;
+    cursor: not-allowed;
 }
 
 .slider-text-entry {
@@ -1063,8 +1099,14 @@ input[type="number"] {
     box-shadow: 0 0 0 2px rgba(30, 144, 255, 0.25);
 }
 .slider-text-entry:disabled {
-    opacity: 0.45;
+    opacity: 0.85;
     cursor: not-allowed;
+}
+
+.slider-text-entry.alarm-disconnected:disabled {
+    opacity: 1;
+    background: var(--input-readonly-bg);
+    color: var(--input-readonly-text);
 }
 .slider-text-entry.alarm-none        { border-left: 3px solid var(--alarm-none); }
 .slider-text-entry.alarm-minor       { border-left: 3px solid var(--alarm-minor); }
@@ -1199,12 +1241,13 @@ input[type="number"] {
 }
 
 .widget-select:disabled {
-    opacity: 0.5;
+    opacity: 0.7;
     cursor: not-allowed;
+    pointer-events: none;
 }
 
 .widget-select:disabled ~ .select-display-text {
-    opacity: 0.5;
+    opacity: 1;
 }
 
 /* Footer */

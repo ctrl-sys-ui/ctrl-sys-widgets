@@ -14,9 +14,22 @@ mod test_widget_text_readout {
 
     #[test]
     fn test_disconnected_text_update_shows_alarm_disconnected_class_and_placeholder() {
-        let html = render_inner_disconnected(&w(), "reason").into_string();
+        let html = render_inner_disconnected(&w(), "reason", None).into_string();
         assert!(html.contains("alarm-disconnected"), "alarm-disconnected must be in HTML, got: {html}");
         assert!(html.contains("--"));
+    }
+
+    #[test]
+    fn test_disconnected_text_update_keeps_last_known_value_and_units() {
+        let cv = ChannelValue {
+            value_str: "99.9".to_string(),
+            units: "degC".to_string(),
+            ..ChannelValue::default()
+        };
+        let html = render_inner_disconnected(&w(), "reason", Some(&cv)).into_string();
+        assert!(html.contains("alarm-disconnected"), "alarm-disconnected must be in HTML, got: {html}");
+        assert!(html.contains("99.9"), "last value should be preserved, got: {html}");
+        assert!(html.contains("degC"), "last units should be preserved, got: {html}");
     }
 
     #[test]

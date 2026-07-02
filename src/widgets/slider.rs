@@ -43,41 +43,60 @@ impl Slider {
         let mut enabled_rx = ctx.subscribe_widget_enabled(&config.id);
         let ctx_clone = ctx.clone();
         let widget_id = config.id.clone();
+        let ctx_publish = ctx_clone.clone();
+        let widget_id_publish = widget_id.clone();
         let mut stream = crate::channel::channel_stream(config.clone(), ctx)
             .inspect(move |e| {
                 if let ChannelEvent::Value(cv) = e {
-                    ctx_clone.publish_widget_value(&widget_id, cv.clone());
+                    ctx_publish.publish_widget_value(&widget_id_publish, cv.clone());
                 }
             });
         let mut last_value: Option<ChannelValue> = None;
         let mut last_html = String::new();
+
         while let Some(event) = stream.next().await {
             let html = match event {
-                ChannelEvent::Value(cv)         => {
+                ChannelEvent::Value(cv) => {
+                    ctx_clone.set_widget_connected(&widget_id, true);
                     let enabled = *enabled_rx.borrow();
                     last_value = Some(cv.clone());
                     render_inner_connected(&config, &cv, enabled).into_string()
                 }
-                ChannelEvent::Disconnected(_)
-                | ChannelEvent::Error(_)        => render_inner_disconnected(&config).into_string(),
-                ChannelEvent::Connected         => continue,
+                ChannelEvent::Disconnected(_) | ChannelEvent::Error(_) => {
+                    ctx_clone.set_widget_connected(&widget_id, false);
+                    render_inner_disconnected_with_last(&config, last_value.as_ref()).into_string()
+                }
+                ChannelEvent::Connected => {
+                    ctx_clone.set_widget_connected(&widget_id, true);
+                    continue;
+                }
             };
             if html != last_html {
                 last_html = html.clone();
-                if tx.send(html).is_err() { break; }
+                if tx.send(html).is_err() {
+                    break;
+                }
             }
 
             while enabled_rx.has_changed().unwrap_or(false) {
                 if enabled_rx.changed().await.is_err() {
                     break;
                 }
-                let html = match &last_value {
-                    Some(cv) => render_inner_connected(&config, cv, *enabled_rx.borrow()).into_string(),
-                    None => render_inner_disconnected(&config).into_string(),
+                let html = if ctx_clone.is_widget_connected(&widget_id) {
+                    match &last_value {
+                        Some(cv) => {
+                            render_inner_connected(&config, cv, *enabled_rx.borrow()).into_string()
+                        }
+                        None => render_inner_disconnected(&config).into_string(),
+                    }
+                } else {
+                    render_inner_disconnected_with_last(&config, last_value.as_ref()).into_string()
                 };
                 if html != last_html {
                     last_html = html.clone();
-                    if tx.send(html).is_err() { break; }
+                    if tx.send(html).is_err() {
+                        break;
+                    }
                 }
             }
         }
@@ -94,20 +113,83 @@ pub fn render_inner_connected(config: &WidgetConfig, cv: &ChannelValue, enabled:
     };
     let display_value = cv.value_str.clone();
     let min = cv.control_low;
-    let max = if (cv.control_high - cv.control_low).abs() < f64::EPSILON { cv.control_low + 100.0 } else { cv.control_high };
+    let max = if (cv.control_high - cv.control_low).abs() < f64::EPSILON {
+        cv.control_low + 100.0
+    } else {
+        cv.control_high
+    };
     let precision_step = 10f64.powi(-(cv.precision as i32).max(0));
-    let step = config.metadata.as_ref()
+    let step = config
+        .metadata
+        .as_ref()
         .and_then(|m| m.control.as_ref())
         .map(|c| c.min_step)
         .filter(|&s| s > 0.0)
         .unwrap_or(precision_step);
-    render_slider_html(config, cv.raw_value, &display_value, &cv.units, min, max, step,
-                        alarm_class, icon, !enabled, &super::tooltips::build_tooltip(config, cv))
+    render_slider_html(
+        config,
+        cv.raw_value,
+        &display_value,
+        &cv.units,
+        min,
+        max,
+        step,
+        alarm_class,
+        icon,
+        !enabled,
+        &super::tooltips::build_tooltip(config, cv),
+    )
 }
 
 pub fn render_inner_disconnected(config: &WidgetConfig) -> Markup {
-    render_slider_html(config, 0.0, "--", "", 0.0, 100.0, 0.1,
-                        "alarm-disconnected", Some(super::OFFLINE_SVG), true, "")
+    render_inner_disconnected_with_last(config, None)
+}
+
+fn render_inner_disconnected_with_last(config: &WidgetConfig, last: Option<&ChannelValue>) -> Markup {
+    if let Some(cv) = last {
+        let min = cv.control_low;
+        let max = if (cv.control_high - cv.control_low).abs() < f64::EPSILON {
+            cv.control_low + 100.0
+        } else {
+            cv.control_high
+        };
+        let precision_step = 10f64.powi(-(cv.precision as i32).max(0));
+        let step = config
+            .metadata
+            .as_ref()
+            .and_then(|m| m.control.as_ref())
+            .map(|c| c.min_step)
+            .filter(|&s| s > 0.0)
+            .unwrap_or(precision_step);
+
+        return render_slider_html(
+            config,
+            cv.raw_value,
+            &cv.value_str,
+            &cv.units,
+            min,
+            max,
+            step,
+            "alarm-disconnected",
+            Some(super::OFFLINE_SVG),
+            true,
+            "",
+        );
+    }
+
+    render_slider_html(
+        config,
+        0.0,
+        "--",
+        "",
+        0.0,
+        100.0,
+        0.1,
+        "alarm-disconnected",
+        Some(super::OFFLINE_SVG),
+        true,
+        "",
+    )
 }
 
 fn render_slider_html(

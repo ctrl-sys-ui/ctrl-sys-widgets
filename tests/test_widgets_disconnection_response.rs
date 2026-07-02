@@ -154,15 +154,15 @@ mod test_widgets_disconnection_response {
         wait_for_disconnect_html(config, ctx, "alarm-disconnected").await;
     }
 
-    /// `Gauge` should render `--` as the value placeholder after disconnect.
+    /// `Gauge` should render the disconnected/offline state after disconnect.
     #[tokio::test]
-    async fn gauge_shows_placeholder_after_server_drop() {
+    async fn gauge_shows_offline_icon_after_server_drop() {
         let port = start_one_shot_server(2).await;
         let pool = ModbusPool::new();
         let config = modbus_widget(port, WidgetType::Gauge);
         let ctx = make_ctx(pool);
-        // Gauge disconnected state renders "--" and the OFFLINE icon.
-        wait_for_disconnect_html(config, ctx, "--").await;
+        // Use stable data URI prefix for the offline icon instead of value placeholder.
+        wait_for_disconnect_html(config, ctx, "data:image/svg+xml;base64,").await;
     }
 
     /// `Slider` should render the offline icon (OFFLINE_SVG data URI) after

@@ -26,7 +26,7 @@ impl TextUpdate {
 
         async_stream::stream! {
             yield Ok(axum::response::sse::Event::default().data(
-                render_inner_disconnected(&config, "Connecting...").into_string()
+                render_inner_disconnected(&config, "Connecting...", None).into_string()
             ));
             let mut rx = rx;
             while let Some(html) = rx.recv().await {
@@ -42,17 +42,25 @@ impl TextUpdate {
     ) {
         let ctx_clone = ctx.clone();
         let widget_id = config.id.clone();
+        let ctx_publish = ctx_clone.clone();
+        let widget_id_publish = widget_id.clone();
         let mut stream = crate::channel::channel_stream(config.clone(), ctx)
             .inspect(move |e| {
                 if let ChannelEvent::Value(cv) = e {
-                    ctx_clone.publish_widget_value(&widget_id, cv.clone());
+                    ctx_publish.publish_widget_value(&widget_id_publish, cv.clone());
                 }
             });
+        let mut last_value: Option<ChannelValue> = None;
         while let Some(event) = stream.next().await {
             let html = match event {
-                ChannelEvent::Value(cv)          => render_inner_connected(&config, &cv).into_string(),
+                ChannelEvent::Value(cv)          => {
+                    last_value = Some(cv.clone());
+                    render_inner_connected(&config, &cv).into_string()
+                }
                 ChannelEvent::Disconnected(msg)
-                | ChannelEvent::Error(msg)       => render_inner_disconnected(&config, &msg).into_string(),
+                | ChannelEvent::Error(msg)       => {
+                    render_inner_disconnected(&config, &msg, last_value.as_ref()).into_string()
+                }
                 ChannelEvent::Connected          => continue,
             };
             if tx.send(html).is_err() { break; }
@@ -72,9 +80,24 @@ pub fn render_inner_connected(config: &WidgetConfig, cv: &ChannelValue) -> Marku
     render_display_html(config, &cv.value_str, &cv.units, &format!("text-update {}", alarm_class), icon, &tooltip)
 }
 
-pub fn render_inner_disconnected(config: &WidgetConfig, _reason: &str) -> Markup {
+pub fn render_inner_disconnected(
+    config: &WidgetConfig,
+    _reason: &str,
+    last_value: Option<&ChannelValue>,
+) -> Markup {
+    let (value, units) = match last_value {
+        Some(cv) if !cv.value_str.is_empty() => (cv.value_str.as_str(), cv.units.as_str()),
+        _ => ("--", ""),
+    };
     let tooltip = super::tooltips::build_disconnected_tooltip(config);
-    render_display_html(config, "--", "", "text-update alarm-disconnected", Some(super::OFFLINE_SVG), &tooltip)
+    render_display_html(
+        config,
+        value,
+        units,
+        "text-update alarm-disconnected",
+        Some(super::OFFLINE_SVG),
+        &tooltip,
+    )
 }
 
 fn render_display_html(
@@ -118,7 +141,7 @@ pub fn render_text_update(widget: &WidgetConfig) -> Markup {
             data-widget-id=(widget.id)
             data-ch=(widget.channel_address())
             hx-sse=(format!("swap:{}", widget.id)) {
-            (render_inner_disconnected(widget, "Connecting..."))
+            (render_inner_disconnected(widget, "Connecting...", None))
         }
     }
 }

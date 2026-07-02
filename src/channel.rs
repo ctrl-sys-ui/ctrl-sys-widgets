@@ -116,6 +116,8 @@ pub struct ChannelContext {
     pub widget_enabled: DashMap<String, watch::Sender<bool>>,
     /// Per-widget latest-value bus, for app-logic subscriptions.
     pub widget_value_bus: DashMap<String, watch::Sender<ChannelValue>>,
+    /// Per-widget connection state bus. `true` = connected (default when unknown).
+    pub widget_connected: DashMap<String, watch::Sender<bool>>,
 }
 
 impl ChannelContext {
@@ -164,6 +166,30 @@ impl ChannelContext {
             .subscribe()
     }
 
+    /// Publish the current connection state for a widget.
+    pub fn set_widget_connected(&self, widget_id: &str, connected: bool) {
+        match self.widget_connected.get(widget_id) {
+            Some(tx) => {
+                tx.send_replace(connected);
+            }
+            None => {
+                let (tx, _rx) = watch::channel(connected);
+                self.widget_connected.insert(widget_id.to_string(), tx);
+            }
+        }
+    }
+
+    /// Returns the latest known connection state for a widget.
+    ///
+    /// Defaults to `true` when no monitor has published state yet to avoid
+    /// rejecting writes in startup/test paths where monitors are not running.
+    pub fn is_widget_connected(&self, widget_id: &str) -> bool {
+        self.widget_connected
+            .get(widget_id)
+            .map(|tx| *tx.borrow())
+            .unwrap_or(true)
+    }
+
     #[cfg(all(feature = "epics", feature = "modbus"))]
     pub fn new(
         epics_ctx: Arc<std::sync::Mutex<pvxs_sys::Context>>,
@@ -177,6 +203,7 @@ impl ChannelContext {
             modbus_bridge: crate::modbus_bridge::ModbusBridgeContext::new(),
             widget_enabled: DashMap::new(),
             widget_value_bus: DashMap::new(),
+            widget_connected: DashMap::new(),
         })
     }
 
@@ -187,6 +214,7 @@ impl ChannelContext {
             epics_ctx,
             widget_enabled: DashMap::new(),
             widget_value_bus: DashMap::new(),
+            widget_connected: DashMap::new(),
         })
     }
 
@@ -199,6 +227,7 @@ impl ChannelContext {
             modbus_bridge: crate::modbus_bridge::ModbusBridgeContext::new(),
             widget_enabled: DashMap::new(),
             widget_value_bus: DashMap::new(),
+            widget_connected: DashMap::new(),
         })
     }
 
@@ -208,6 +237,7 @@ impl ChannelContext {
             local_store: crate::local_channel::LocalStore::new(),
             widget_enabled: DashMap::new(),
             widget_value_bus: DashMap::new(),
+            widget_connected: DashMap::new(),
         })
     }
 }

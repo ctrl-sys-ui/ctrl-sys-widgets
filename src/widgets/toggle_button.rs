@@ -43,7 +43,14 @@ pub fn render_inner_connected(config: &WidgetConfig, cv: &ChannelValue) -> Marku
 }
 
 pub fn render_inner_disconnected(config: &WidgetConfig) -> Markup {
-    render_toggle_html(config, false, "0", true, "", None)
+    render_inner_disconnected_with_last(config, None)
+}
+
+fn render_inner_disconnected_with_last(config: &WidgetConfig, last: Option<&ChannelValue>) -> Markup {
+    let is_on = last.map(|cv| cv.raw_value > 0.5).unwrap_or(false);
+    let next_val = if is_on { "0" } else { "1" };
+    let tooltip = super::tooltips::build_disconnected_tooltip(config);
+    render_toggle_html(config, is_on, next_val, true, &tooltip, None)
 }
 
 fn render_toggle_html(
@@ -176,6 +183,7 @@ impl ToggleButton {
         let mut stream = crate::channel::channel_stream(config.clone(), ctx.clone());
         let mut countdown_end: Option<Instant> = None;
         let mut last_value: Option<ChannelValue> = None;
+        let mut is_connected = true;
         let mut last_html = String::new();
 
         let send_if_changed = |tx: &tokio::sync::mpsc::UnboundedSender<String>,
@@ -200,18 +208,25 @@ impl ToggleButton {
             .await
             {
                 NextEvent::Channel(None) => break,
-                NextEvent::Channel(Some(ChannelEvent::Connected)) => continue,
+                NextEvent::Channel(Some(ChannelEvent::Connected)) => {
+                    is_connected = true;
+                    ctx_clone.set_widget_connected(&widget_id, true);
+                    continue;
+                }
                 NextEvent::Channel(Some(ChannelEvent::Disconnected(_)))
                 | NextEvent::Channel(Some(ChannelEvent::Error(_))) => {
+                    is_connected = false;
+                    ctx_clone.set_widget_connected(&widget_id, false);
                     countdown_end = None;
-                    last_value = None;
                     publish_countdown_secs(&ctx, &config.id, 0);
-                    let html = render_inner_disconnected(&config).into_string();
+                    let html = render_inner_disconnected_with_last(&config, last_value.as_ref()).into_string();
                     if !send_if_changed(&tx, &mut last_html, html) {
                         break;
                     }
                 }
                 NextEvent::Channel(Some(ChannelEvent::Value(cv))) => {
+                    is_connected = true;
+                    ctx_clone.set_widget_connected(&widget_id, true);
                     ctx_clone.publish_widget_value(&widget_id, cv.clone());
                     let is_on = cv.raw_value > 0.5;
                     if is_on {
@@ -241,15 +256,19 @@ impl ToggleButton {
                 }
                 NextEvent::EnabledChanged => {
                     let enabled = *enabled_rx.borrow();
-                    let html = match &last_value {
-                        Some(cv) => {
-                            let now = Instant::now();
-                            let countdown_secs = countdown_end
-                                .and_then(|end| end.checked_duration_since(now))
-                                .map(|d| d.as_secs().max(1));
-                            render_inner_connected_with_countdown(&config, cv, countdown_secs, enabled).into_string()
+                    let html = if is_connected {
+                        match &last_value {
+                            Some(cv) => {
+                                let now = Instant::now();
+                                let countdown_secs = countdown_end
+                                    .and_then(|end| end.checked_duration_since(now))
+                                    .map(|d| d.as_secs().max(1));
+                                render_inner_connected_with_countdown(&config, cv, countdown_secs, enabled).into_string()
+                            }
+                            None => render_inner_disconnected(&config).into_string(),
                         }
-                        None => render_inner_disconnected(&config).into_string(),
+                    } else {
+                        render_inner_disconnected_with_last(&config, last_value.as_ref()).into_string()
                     };
                     if !send_if_changed(&tx, &mut last_html, html) { break; }
                 }

@@ -76,17 +76,25 @@ impl MultiStateLed {
     ) {
         let ctx_clone = ctx.clone();
         let widget_id = config.id.clone();
+        let ctx_publish = ctx_clone.clone();
+        let widget_id_publish = widget_id.clone();
         let mut stream = crate::channel::channel_stream(config.clone(), ctx)
             .inspect(move |e| {
                 if let ChannelEvent::Value(cv) = e {
-                    ctx_clone.publish_widget_value(&widget_id, cv.clone());
+                    ctx_publish.publish_widget_value(&widget_id_publish, cv.clone());
                 }
             });
+        let mut last_value: Option<ChannelValue> = None;
         while let Some(event) = stream.next().await {
             let html = match event {
-                ChannelEvent::Value(cv)          => render_inner_connected(&config, &cv).into_string(),
+                ChannelEvent::Value(cv)          => {
+                    last_value = Some(cv.clone());
+                    render_inner_connected(&config, &cv).into_string()
+                }
                 ChannelEvent::Disconnected(_)
-                | ChannelEvent::Error(_)         => render_inner_pending(&config).into_string(),
+                | ChannelEvent::Error(_)         => {
+                    render_inner_pending_with_last(&config, last_value.as_ref()).into_string()
+                }
                 ChannelEvent::Connected          => continue,
             };
             if tx.send(html).is_err() { break; }
@@ -127,8 +135,16 @@ pub fn render_inner_connected(config: &WidgetConfig, cv: &ChannelValue) -> Marku
 }
 
 pub fn render_inner_pending(config: &WidgetConfig) -> Markup {
+    render_inner_pending_with_last(config, None)
+}
+
+pub fn render_inner_pending_with_last(config: &WidgetConfig, last_value: Option<&ChannelValue>) -> Markup {
+    let state_cls = match last_value {
+        Some(cv) => state_class(cv.raw_value, config.invert.unwrap_or(false)),
+        None => "vs-pending",
+    };
     let tooltip = super::tooltips::build_disconnected_tooltip(config);
-    render_polygon_html(config, "vs-pending", Some(super::OFFLINE_SVG), &tooltip)
+    render_polygon_html(config, state_cls, Some(super::OFFLINE_SVG), &tooltip)
 }
 
 fn render_polygon_html(config: &WidgetConfig, state_cls: &str, icon: Option<&str>, tooltip: &str) -> Markup {

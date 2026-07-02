@@ -1,7 +1,11 @@
 mod test_widget_gauge {
     use mycela::channel::ChannelValue;
     use mycela::config::{WidgetConfig, WidgetType};
-    use mycela::widgets::gauge::{render_inner_connected, render_inner_disconnected};
+    use mycela::widgets::gauge::{
+        render_inner_connected,
+        render_inner_disconnected,
+        render_inner_disconnected_with_last,
+    };
     use mycela::widgets::{render_gauge, MAJOR_ALARM_SVG, MINOR_ALARM_SVG};
 
     fn gauge_widget() -> WidgetConfig {
@@ -18,6 +22,21 @@ mod test_widget_gauge {
         let html = render_inner_disconnected(&gauge_widget()).into_string();
         assert!(html.contains("widget-status-icon"), "got: {html}");
         assert!(html.contains("--"));
+    }
+
+    #[test]
+    fn test_disconnected_gauge_keeps_last_value_and_units_when_available() {
+        let cv = ChannelValue {
+            raw_value: 37.5,
+            value_str: "37.5".to_string(),
+            units: "degC".to_string(),
+            display_low: 0.0,
+            display_high: 100.0,
+            ..ChannelValue::default()
+        };
+        let html = render_inner_disconnected_with_last(&gauge_widget(), Some(&cv)).into_string();
+        assert!(html.contains("37.5"), "got: {html}");
+        assert!(html.contains("degC"), "got: {html}");
     }
 
     #[test]

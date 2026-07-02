@@ -1,7 +1,11 @@
 mod test_widget_led {
     use mycela::channel::ChannelValue;
     use mycela::config::{WidgetConfig, WidgetType};
-    use mycela::widgets::led::{render_inner_connected, render_inner_disconnected};
+    use mycela::widgets::led::{
+        render_inner_connected,
+        render_inner_disconnected,
+        render_inner_disconnected_with_last,
+    };
     use mycela::widgets::{MAJOR_ALARM_SVG, MINOR_ALARM_SVG, OFFLINE_SVG};
 
     fn w() -> WidgetConfig {
@@ -17,6 +21,14 @@ mod test_widget_led {
     fn test_disconnected_led_shows_offline_status_icon() {
         let html = render_inner_disconnected(&w()).into_string();
         assert!(html.contains(OFFLINE_SVG));
+    }
+
+    #[test]
+    fn test_disconnected_led_keeps_last_on_state() {
+        let cv = ChannelValue { raw_value: 1.0, ..ChannelValue::default() };
+        let html = render_inner_disconnected_with_last(&w(), Some(&cv)).into_string();
+        assert!(html.contains("led-on"), "got: {html}");
+        assert!(html.contains("ON"), "got: {html}");
     }
 
     #[test]

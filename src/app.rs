@@ -210,6 +210,40 @@ pub async fn write_widget_markup(
             },
         ),
         Some(w) => {
+            let enabled = *state.channel_ctx.subscribe_widget_enabled(widget_id).borrow();
+            if !enabled {
+                return (
+                    StatusCode::FORBIDDEN,
+                    maud::html! {
+                        span class="write-err" { "Widget is disabled" }
+                    },
+                );
+            }
+
+            let is_writable_widget = matches!(
+                w.widget_type,
+                WidgetType::Button
+                    | WidgetType::ToggleButton
+                    | WidgetType::Slider
+                    | WidgetType::Select
+                    | WidgetType::TextEntry
+            );
+            let is_local_protocol = matches!(
+                w.protocol.as_ref(),
+                Some(crate::config::ProtocolConfig::Local(_))
+            );
+            if is_writable_widget
+                && !is_local_protocol
+                && !state.channel_ctx.is_widget_connected(widget_id)
+            {
+                return (
+                    StatusCode::FORBIDDEN,
+                    maud::html! {
+                        span class="write-err" { "Widget is disconnected" }
+                    },
+                );
+            }
+
             let status = StatusCode::OK;
             // Write the value to the channel and get the updated widget HTML to return in the response.
             let markup =
