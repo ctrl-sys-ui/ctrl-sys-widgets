@@ -62,7 +62,7 @@ fn render_toggle_html(
     let state_label = if is_on { "ON" } else { "OFF" };
 
     html! {
-        div class="widget-inner" {
+        div class="widget-inner" data-widget-enabled=(if disabled { "false" } else { "true" }) {
             @if !tooltip.is_empty() {
                 div class="button-label-row" style="display:flex;align-items:center;gap:0.4rem;margin-bottom:0.5rem;" {
                     span class="widget-label" { (config.label) }
@@ -97,6 +97,7 @@ pub fn render_toggle_button(widget: &WidgetConfig) -> Markup {
         div style=[super::widget_container_style(widget)]
             data-widget-id=(widget.id)
             data-ch=(widget.channel_address())
+            data-widget-enabled="false"
             hx-sse=(format!("swap:{}", widget.id)) {
             (render_inner_disconnected(widget))
         }

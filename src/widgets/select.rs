@@ -40,6 +40,7 @@ impl Select {
         ctx: Arc<ChannelContext>,
         tx: tokio::sync::mpsc::UnboundedSender<String>,
     ) {
+        let mut enabled_rx = ctx.subscribe_widget_enabled(&config.id);
         let ctx_clone = ctx.clone();
         let widget_id = config.id.clone();
         let mut stream = crate::channel::channel_stream(config.clone(), ctx)
@@ -48,10 +49,14 @@ impl Select {
                     ctx_clone.publish_widget_value(&widget_id, cv.clone());
                 }
             });
+        let mut last_value: Option<ChannelValue> = None;
         let mut last_html = String::new();
         while let Some(event) = stream.next().await {
             let html = match event {
-                ChannelEvent::Value(cv)         => render_inner_connected(&config, &cv).into_string(),
+                ChannelEvent::Value(cv)         => {
+                    last_value = Some(cv.clone());
+                    render_inner_connected(&config, &cv, *enabled_rx.borrow()).into_string()
+                }
                 ChannelEvent::Disconnected(_)
                 | ChannelEvent::Error(_)        => render_inner_disconnected(&config).into_string(),
                 ChannelEvent::Connected         => continue,
@@ -60,11 +65,25 @@ impl Select {
                 last_html = html.clone();
                 if tx.send(html).is_err() { break; }
             }
+
+            while enabled_rx.has_changed().unwrap_or(false) {
+                if enabled_rx.changed().await.is_err() {
+                    break;
+                }
+                let html = match &last_value {
+                    Some(cv) => render_inner_connected(&config, cv, *enabled_rx.borrow()).into_string(),
+                    None => render_inner_disconnected(&config).into_string(),
+                };
+                if html != last_html {
+                    last_html = html.clone();
+                    if tx.send(html).is_err() { break; }
+                }
+            }
         }
     }
 }
 
-pub fn render_inner_connected(config: &WidgetConfig, cv: &ChannelValue) -> Markup {
+pub fn render_inner_connected(config: &WidgetConfig, cv: &ChannelValue, enabled: bool) -> Markup {
     let alarm_class    = super::alarm_severity_class(cv.alarm_severity);
     let icon: Option<&str> = match cv.alarm_severity {
         1 => Some(super::MINOR_ALARM_SVG),
@@ -87,6 +106,7 @@ pub fn render_inner_connected(config: &WidgetConfig, cv: &ChannelValue) -> Marku
                 div class="select-wrapper" {
                     select class=(format!("widget-select {}", alarm_class))
                         name="value"
+                        disabled[!enabled]
                         hx-post={"/api/widget/" (config.id) "/set"}
                         hx-trigger="change"
                         hx-target="next .status"
@@ -114,7 +134,7 @@ pub fn render_inner_connected(config: &WidgetConfig, cv: &ChannelValue) -> Marku
 
 pub fn render_inner_disconnected(config: &WidgetConfig) -> Markup {
     html! {
-        div class="widget-inner" {
+        div class="widget-inner" data-widget-enabled="false" {
             label class="widget-label" { (config.label) }
             div class="select-with-icon-container" {
                 img class="select-icon" src=(super::OFFLINE_SVG) alt="offline";
@@ -141,6 +161,7 @@ pub fn render_select(widget: &WidgetConfig) -> Markup {
         div style=[super::widget_container_style(widget)]
             data-widget-id=(widget.id)
             data-ch=(widget.channel_address())
+            data-widget-enabled="false"
             hx-sse=(format!("swap:{}", widget.id)) {
             (render_inner_disconnected(widget))
         }

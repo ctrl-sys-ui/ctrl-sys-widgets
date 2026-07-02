@@ -64,6 +64,7 @@ impl Button {
                     let Some(event) = maybe_event else { break; };
                     let html = match event {
                         ChannelEvent::Value(cv) => {
+                            ctx_clone.set_widget_connected(&widget_id, true);
                             ctx_clone.publish_widget_value(&widget_id, cv.clone());
                             let enabled = *enabled_rx.borrow();
                             let html = render_inner_connected(&config, &cv, enabled).into_string();
@@ -71,10 +72,14 @@ impl Button {
                             html
                         }
                         ChannelEvent::Disconnected(_) | ChannelEvent::Error(_) => {
+                            ctx_clone.set_widget_connected(&widget_id, false);
                             last_cv = None;
                             render_inner_disconnected(&config).into_string()
                         }
-                        ChannelEvent::Connected => continue,
+                        ChannelEvent::Connected => {
+                            ctx_clone.set_widget_connected(&widget_id, true);
+                            continue;
+                        }
                     };
                     if !send_if_changed(&tx, &mut last_html, html) { break; }
                 }
@@ -92,22 +97,28 @@ impl Button {
 }
 
 pub fn render_inner_connected(config: &WidgetConfig, cv: &ChannelValue, enabled: bool) -> Markup {
-    render_button_html(config, !enabled, &super::tooltips::build_button_tooltip(config, cv))
+    render_button_html(
+        config,
+        !enabled,
+        enabled,
+        &super::tooltips::build_button_tooltip(config, cv),
+    )
 }
 
 pub fn render_inner_disconnected(config: &WidgetConfig) -> Markup {
     let tooltip = super::tooltips::build_disconnected_tooltip(config);
-    render_button_html(config, true, &tooltip)
+    render_button_html(config, true, false, &tooltip)
 }
 
 fn render_button_html(
     config: &WidgetConfig,
     disabled: bool,
+    enabled: bool,
     tooltip: &str,
 ) -> Markup {
     html! {
         @let val = config.write_value.unwrap_or(1.0) as i64;
-        div class="widget-inner" {
+        div class="widget-inner" data-widget-enabled=(if enabled { "true" } else { "false" }) {
             @if !tooltip.is_empty() {
                 (super::tooltips::render_tooltip_info_btn(tooltip))
             }
@@ -137,6 +148,7 @@ pub fn render_button(widget: &WidgetConfig) -> Markup {
         div style=[super::widget_container_style(widget)]
             data-widget-id=(widget.id)
             data-ch=(widget.channel_address())
+            data-widget-enabled="false"
             hx-sse=(format!("swap:{}", widget.id)) {
             (render_inner_disconnected(widget))
         }
