@@ -4,13 +4,13 @@ version = "0.1.0"
 edition = "2021"
 authors = ["Tine Zata <https://github.com/TineZata>"]
 description = "Distributed control system framework and UI widgets written in rust"
-license = "MPL-2.0"
-repository = "https://github.com/TineZata/mycela"
+license = "MPL-2.0, Copyright (c) 2026 First Light Fusion Limited"
+repository = "https://github.com/firstlightfusion/mycela"
 keywords = ["control systems", "widgets", "ui", "gui", "dcs", "epics", "modbus"]
 categories = ["development-tools", "science"]
 readme = "README.md"
 documentation = "https://docs.rs/mycela"
-homepage = "https://github.com/TineZata/mycela"
+homepage = "https://github.com/firstlightfusion/mycela"
 
 [[bin]]
 name = "test-config-load"
