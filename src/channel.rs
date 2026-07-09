@@ -112,7 +112,7 @@ pub struct ChannelContext {
     pub modbus_pool: Arc<crate::modbus_client::ModbusPool>,
     #[cfg(feature = "modbus-server")]
     pub modbus_bridge: Arc<crate::modbus_bridge::ModbusBridgeContext>,
-    /// Per-widget enabled/disabled state bus. `false` = enabled (default).
+    /// Per-widget enabled/disabled state bus. `true` = enabled (default for unmanaged widgets).
     pub widget_enabled: DashMap<String, watch::Sender<bool>>,
     /// Per-widget latest-value bus, for app-logic subscriptions.
     pub widget_value_bus: DashMap<String, watch::Sender<ChannelValue>>,
@@ -135,12 +135,12 @@ impl ChannelContext {
         }
     }
 
-    /// Subscribe to the enabled state of a widget. Returns `false` by default
-    /// if no explicit state has been set yet.
+    /// Subscribe to the enabled state of a widget. Returns `true` (enabled) by default
+    /// when no explicit state has been set yet, so unmanaged widgets are active once connected.
     pub fn subscribe_widget_enabled(&self, widget_id: &str) -> watch::Receiver<bool> {
         self.widget_enabled
             .entry(widget_id.to_string())
-            .or_insert_with(|| watch::channel(false).0)
+            .or_insert_with(|| watch::channel(true).0)
             .subscribe()
     }
 
