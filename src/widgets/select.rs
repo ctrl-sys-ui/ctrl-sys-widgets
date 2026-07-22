@@ -72,7 +72,10 @@ impl Select {
             };
             if html != last_html {
                 last_html = html.clone();
-                if tx.send(html).is_err() { break; }
+                if tx.send(html).is_err() {
+                    ctx_clone.set_widget_connected(&widget_id, false);
+                    break;
+                }
             }
 
             while enabled_rx.has_changed().unwrap_or(false) {
@@ -89,7 +92,10 @@ impl Select {
                 };
                 if html != last_html {
                     last_html = html.clone();
-                    if tx.send(html).is_err() { break; }
+                    if tx.send(html).is_err() {
+                        ctx_clone.set_widget_connected(&widget_id, false);
+                        break;
+                    }
                 }
             }
         }

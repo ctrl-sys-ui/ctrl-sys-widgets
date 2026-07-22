@@ -81,7 +81,10 @@ impl Button {
                             continue;
                         }
                     };
-                    if !send_if_changed(&tx, &mut last_html, html) { break; }
+                    if !send_if_changed(&tx, &mut last_html, html) {
+                        ctx_clone.set_widget_connected(&widget_id, false);
+                        break;
+                    }
                 }
                 Ok(()) = enabled_rx.changed() => {
                     let enabled = *enabled_rx.borrow();
@@ -89,7 +92,10 @@ impl Button {
                         Some(cv) => render_inner_connected(&config, cv, enabled).into_string(),
                         None => render_inner_disconnected(&config).into_string(),
                     };
-                    if !send_if_changed(&tx, &mut last_html, html) { break; }
+                    if !send_if_changed(&tx, &mut last_html, html) {
+                        ctx_clone.set_widget_connected(&widget_id, false);
+                        break;
+                    }
                 }
             }
         }

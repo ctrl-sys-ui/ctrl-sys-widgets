@@ -251,6 +251,7 @@ impl ToggleButton {
                     let html = render_inner_connected_with_countdown(&config, &cv, countdown_secs, enabled)
                         .into_string();
                     if !send_if_changed(&tx, &mut last_html, html) {
+                        ctx_clone.set_widget_connected(&widget_id, false);
                         break;
                     }
                 }
@@ -270,7 +271,10 @@ impl ToggleButton {
                     } else {
                         render_inner_disconnected_with_last(&config, last_value.as_ref()).into_string()
                     };
-                    if !send_if_changed(&tx, &mut last_html, html) { break; }
+                    if !send_if_changed(&tx, &mut last_html, html) {
+                        ctx_clone.set_widget_connected(&widget_id, false);
+                        break;
+                    }
                 }
                 NextEvent::Tick => {
                     if let (Some(end), Some(cv)) = (countdown_end, last_value.as_ref()) {
@@ -333,7 +337,8 @@ impl ToggleButton {
                             )
                             .into_string();
                             if !send_if_changed(&tx, &mut last_html, html) {
-                            break;
+                                ctx_clone.set_widget_connected(&widget_id, false);
+                                break;
                             }
                         }
                     }

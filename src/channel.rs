@@ -190,6 +190,17 @@ impl ChannelContext {
             .unwrap_or(true)
     }
 
+    /// Subscribe to the latest known connection state for a widget.
+    ///
+    /// Defaults to `true` when no monitor has published state yet to preserve
+    /// existing startup behavior for unmanaged widgets.
+    pub fn subscribe_widget_connected(&self, widget_id: &str) -> watch::Receiver<bool> {
+        self.widget_connected
+            .entry(widget_id.to_string())
+            .or_insert_with(|| watch::channel(true).0)
+            .subscribe()
+    }
+
     #[cfg(all(feature = "epics", feature = "modbus"))]
     pub fn new(
         epics_ctx: Arc<std::sync::Mutex<pvxs_sys::Context>>,

@@ -521,6 +521,7 @@ fn run_loopback_desktop(
 
     let proxy_for_new_window = proxy.clone();
     let webview = WebViewBuilder::new()
+        .with_incognito(true)
         .with_url(&url)
         .with_new_window_req_handler(move |url, _features| {
             tracing::info!("Desktop new window request: {}", url);
@@ -565,6 +566,7 @@ fn run_loopback_desktop(
                 };
                 let child_proxy = proxy.clone();
                 let child_webview = match WebViewBuilder::new()
+                    .with_incognito(true)
                     .with_url(&url)
                     .with_new_window_req_handler(move |next_url, _features| {
                         tracing::info!("Desktop new window request: {}", next_url);
@@ -617,6 +619,7 @@ fn run_ipc_desktop(config: AppConfig, window: DesktopWindowSettings, hooks: Desk
     let proxy_for_ipc = proxy.clone();
     let proxy_for_new_window = proxy.clone();
     let webview = WebViewBuilder::new()
+        .with_incognito(true)
         .with_custom_protocol("mycela".into(), move |_webview_id, request| {
             (protocol_response)(&protocol_config, &protocol_token, request)
         })
@@ -764,6 +767,7 @@ fn run_ipc_desktop(config: AppConfig, window: DesktopWindowSettings, hooks: Desk
                 let child_proxy_for_new_window = proxy.clone();
 
                 let child_webview = match WebViewBuilder::new()
+                    .with_incognito(true)
                     .with_custom_protocol("mycela".into(), move |_webview_id, request| {
                         (child_protocol_response)(
                             &child_protocol_config,

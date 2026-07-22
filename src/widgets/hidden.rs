@@ -39,10 +39,12 @@ impl Hidden {
     ) {
         let ctx_clone = ctx.clone();
         let widget_id = config.id.clone();
+        let ctx_publish = ctx_clone.clone();
+        let widget_id_publish = widget_id.clone();
         let mut stream = crate::channel::channel_stream(config.clone(), ctx)
             .inspect(move |e| {
                 if let ChannelEvent::Value(cv) = e {
-                    ctx_clone.publish_widget_value(&widget_id, cv.clone());
+                    ctx_publish.publish_widget_value(&widget_id_publish, cv.clone());
                 }
             });
 
@@ -51,6 +53,7 @@ impl Hidden {
                 ChannelEvent::Connected => continue,
                 ChannelEvent::Value(_) | ChannelEvent::Disconnected(_) | ChannelEvent::Error(_) => {
                     if tx.send(render_hidden(&config).into_string()).is_err() {
+                        ctx_clone.set_widget_connected(&widget_id, false);
                         break;
                     }
                 }

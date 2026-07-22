@@ -74,6 +74,7 @@ impl Slider {
             if html != last_html {
                 last_html = html.clone();
                 if tx.send(html).is_err() {
+                    ctx_clone.set_widget_connected(&widget_id, false);
                     break;
                 }
             }
@@ -95,6 +96,7 @@ impl Slider {
                 if html != last_html {
                     last_html = html.clone();
                     if tx.send(html).is_err() {
+                        ctx_clone.set_widget_connected(&widget_id, false);
                         break;
                     }
                 }

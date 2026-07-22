@@ -70,7 +70,10 @@ impl TextEntry {
                     continue;
                 }
             };
-            if tx.send(html).is_err() { break; }
+            if tx.send(html).is_err() {
+                ctx_clone.set_widget_connected(&widget_id, false);
+                break;
+            }
 
             while enabled_rx.has_changed().unwrap_or(false) {
                 if enabled_rx.changed().await.is_err() {
@@ -80,7 +83,10 @@ impl TextEntry {
                     Some(cv) => render_inner_connected(&config, cv, *enabled_rx.borrow()).into_string(),
                     None => render_inner_disconnected(&config, "Connecting...", None).into_string(),
                 };
-                if tx.send(html).is_err() { break; }
+                if tx.send(html).is_err() {
+                    ctx_clone.set_widget_connected(&widget_id, false);
+                    break;
+                }
             }
         }
     }
