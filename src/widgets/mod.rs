@@ -208,7 +208,7 @@ pub fn render_screen_with_options(
 
                 script src="/static/htmx.min.js" {}
                 script src="/static/tooltip.js" {}
-                script src="/static/desktop_transport.js" {}
+                script src="/static/client_transport.js" {}
                 @if let Some(token) = ipc_token {
                     @let token_json = serde_json::to_string(token)
                         .expect("IPC session token should serialize to JSON string");
