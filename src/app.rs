@@ -6,7 +6,7 @@
 
 use crate::{
     channel::ChannelContext,
-    config::{AppConfig, WidgetConfig, WidgetType},
+    config::{AppConfig, WidgetType},
     protocol_control::{self, ProtocolControlError},
     widgets,
 };
@@ -211,7 +211,23 @@ pub async fn write_widget_markup(
         ),
         Some(w) => {
             let enabled = *state.channel_ctx.subscribe_widget_enabled(widget_id).borrow();
-            if !enabled {
+            let requested_reset_write = matches!(
+                w.widget_type,
+                WidgetType::ToggleButton
+            ) && value
+                .trim()
+                .parse::<f64>()
+                .ok()
+                .and_then(|requested| w.reset_default.map(|reset_default| requested == reset_default || requested == 0.0))
+                .unwrap_or(false);
+
+            if !enabled && !requested_reset_write {
+                tracing::warn!(
+                    "write rejected (disabled): widget_id='{}' value='{}' widget_type='{:?}'",
+                    widget_id,
+                    value,
+                    w.widget_type
+                );
                 return (
                     StatusCode::FORBIDDEN,
                     maud::html! {
@@ -232,10 +248,23 @@ pub async fn write_widget_markup(
                 w.protocol.as_ref(),
                 Some(crate::config::ProtocolConfig::Local(_))
             );
+            let is_command_widget = matches!(
+                w.widget_type,
+                WidgetType::Button | WidgetType::ToggleButton
+            );
+            let is_connected = state.channel_ctx.is_widget_connected(widget_id);
             if is_writable_widget
                 && !is_local_protocol
-                && !state.channel_ctx.is_widget_connected(widget_id)
+                && !is_command_widget
+                && !is_connected
+                && !requested_reset_write
             {
+                tracing::warn!(
+                    "write rejected (disconnected): widget_id='{}' value='{}' widget_type='{:?}'",
+                    widget_id,
+                    value,
+                    w.widget_type
+                );
                 return (
                     StatusCode::FORBIDDEN,
                     maud::html! {
@@ -248,55 +277,9 @@ pub async fn write_widget_markup(
             // Write the value to the channel and get the updated widget HTML to return in the response.
             let markup =
                 widgets::write_channel(w.clone(), value.clone(), state.channel_ctx.clone()).await;
-            maybe_schedule_toggle_reset(w, value, state.channel_ctx.clone());
             (status, markup)
         }
     }
-}
-
-/// Schedule a delayed write of `reset_default` for toggle-button widgets that
-/// have `reset_timeout` configured.
-///
-/// This is a belt-and-suspenders mechanism for the **non-SSE path** (plain HTTP
-/// or IPC writes with no active SSE subscription).  When an SSE subscription IS
-/// active, `ToggleButton::run_monitor_async` handles the reset write itself when
-/// its countdown timer expires, making the two paths independent.  The
-/// double-write that occurs when both are active is idempotent.
-///
-/// The spawned task is intentionally fire-and-forget for now; it will complete
-/// or fail gracefully even if the server is stopped before the timer fires.
-fn maybe_schedule_toggle_reset(
-    widget: WidgetConfig,
-    clicked_value: String,
-    channel_ctx: Arc<ChannelContext>,
-) {
-    if widget.widget_type != WidgetType::ToggleButton {
-        return;
-    }
-
-    let Some(timeout_ms) = widget.reset_timeout.filter(|t| *t > 0) else {
-        return;
-    };
-
-    if clicked_value.trim().parse::<i64>().is_err() {
-        return;
-    }
-
-    // Making sure toggle button always writes an integer value to the channel, so we can safely cast to i64 here.
-    let reset_value = widget.reset_default.unwrap_or(0.0).round() as i64;
-    let reset_value_str = reset_value.to_string();
-    let widget_id = widget.id.clone();
-
-    // Spawn a fire-and-forget async task to reset the toggle after the timeout.
-    tokio::spawn(async move {
-        tokio::time::sleep(std::time::Duration::from_millis(timeout_ms)).await;
-        let result = widgets::write_channel(widget, reset_value_str, channel_ctx).await;
-        tracing::info!(
-            "[{}] toggle reset_timeout elapsed; reset_default write result html: {}",
-            widget_id,
-            result.into_string()
-        );
-    });
 }
 
 // --- Home + screen render ----------------------------------------------------
