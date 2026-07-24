@@ -156,10 +156,14 @@ impl ChannelContext {
         }
     }
 
-    /// Subscribe to the latest channel value stream for a widget.
-    /// Useful for app-level logic that reacts to live data (e.g. enable/disable
-    /// controls based on sensor readings).
-    pub fn subscribe_widget_value(&self, widget_id: &str) -> watch::Receiver<ChannelValue> {
+    /// Subscribe to the latest channel value stream for a widget, will trigger updates even if the value hasn't changed.
+    /// 
+    /// Useful for app-level logic that reacts to live data (e.g. enable/disable controls based on sensor readings).
+    /// 
+    /// Note: uses a send_replace watch receiver, so every successful poll can trigger a change/update to the subscriber,
+    /// even if the value hasn't changed. This is useful for widgets that want to know when a poll has completed, 
+    /// even if the value hasn't changed.
+    pub fn subscribe_widget_value_updates(&self, widget_id: &str) -> watch::Receiver<ChannelValue> {
         self.widget_value_bus
             .entry(widget_id.to_string())
             .or_insert_with(|| watch::channel(ChannelValue::default()).0)
@@ -190,12 +194,17 @@ impl ChannelContext {
             .unwrap_or(true)
     }
 
-    /// Subscribe to the latest known connection state for a widget.
+    /// Subscribe to the latest known connection state for a widget, will trigger updates even if the state hasn't changed.
     ///
+    /// Note: uses a send_replace watch receiver, so every successful poll can trigger a change/update to the subscriber,
+    /// even if the connection state hasn't changed. This is useful for widgets that want to know 
+    /// when a poll has completed, even if the connection state hasn't changed.
+    /// 
     /// Defaults to `true` when no monitor has published state yet to preserve
     /// existing startup behavior for unmanaged widgets.
-    /// TODO: consider changing this to `false` once all widgets are managed by a monitor.
-    pub fn subscribe_widget_connected(&self, widget_id: &str) -> watch::Receiver<bool> {
+    /// 
+    /// TODO: considering changing default to `false` once all widgets are managed by a monitor.
+    pub fn subscribe_widget_connection_updates(&self, widget_id: &str) -> watch::Receiver<bool> {
         self.widget_connected
             .entry(widget_id.to_string())
             .or_insert_with(|| watch::channel(true).0)

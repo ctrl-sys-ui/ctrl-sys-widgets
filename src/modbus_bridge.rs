@@ -406,7 +406,7 @@ pub fn start_bridge_runtime(state: &AppState) -> Result<Vec<JoinHandle<()>>, Pro
             let exposed = mapping.exposed_register;
             // Subscribe to widget value changes and update the exposed register in the bridge's register bank.
             handles.push(tokio::spawn(async move {
-                let mut rx = ctx.subscribe_widget_value(&widget_id);
+                let mut rx = ctx.subscribe_widget_value_updates(&widget_id);
                 loop {
                     if rx.changed().await.is_err() {
                         break;
