@@ -194,6 +194,7 @@ impl ChannelContext {
     ///
     /// Defaults to `true` when no monitor has published state yet to preserve
     /// existing startup behavior for unmanaged widgets.
+    /// TODO: consider changing this to `false` once all widgets are managed by a monitor.
     pub fn subscribe_widget_connected(&self, widget_id: &str) -> watch::Receiver<bool> {
         self.widget_connected
             .entry(widget_id.to_string())
