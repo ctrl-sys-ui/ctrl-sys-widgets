@@ -111,6 +111,8 @@ pub struct DesktopRuntimeHooks {
     /// built, inside the Tokio runtime. Use `tokio::spawn` inside it to run
     /// background tasks (e.g. safety interlocks that call `set_widget_enabled`).
     pub app_logic: Option<AppLogicFn>,
+    /// Optional window icon shown in the title bar and taskbar.
+    pub window_icon: Option<tao::window::Icon>,
 }
 
 impl DesktopRuntimeHooks {
@@ -143,6 +145,7 @@ impl DesktopRuntimeHooks {
             stop_widget_subscription: Arc::new(stop_widget_subscription),
             initial_path: initial_path.into(),
             app_logic: None,
+            window_icon: None,
         }
     }
 
@@ -161,6 +164,12 @@ impl DesktopRuntimeHooks {
     /// ```
     pub fn with_app_logic(mut self, f: impl Fn(AppState) + Send + Sync + 'static) -> Self {
         self.app_logic = Some(Arc::new(f));
+        self
+    }
+
+    /// Set the window icon shown in the title bar and taskbar.
+    pub fn with_window_icon(mut self, icon: tao::window::Icon) -> Self {
+        self.window_icon = Some(icon);
         self
     }
 }
@@ -500,16 +509,19 @@ fn run_loopback_desktop(
     let window_title = window.title.clone();
     let window_width = window.width;
     let window_height = window.height;
+    let window_icon = hooks.window_icon.clone();
 
     let window = WindowBuilder::new()
         .with_title(window.title)
         .with_inner_size(LogicalSize::new(window.width, window.height))
+        .with_window_icon(hooks.window_icon.clone())
         .build(&event_loop)
         .expect("failed to create window");
     let main_window_id = window.id();
 
     let proxy_for_new_window = proxy.clone();
     let webview = WebViewBuilder::new()
+        .with_incognito(true)
         .with_url(&url)
         .with_new_window_req_handler(move |url, _features| {
             tracing::info!("Desktop new window request: {}", url);
@@ -543,6 +555,7 @@ fn run_loopback_desktop(
                 let child_window = match WindowBuilder::new()
                     .with_title(window_title.clone())
                     .with_inner_size(LogicalSize::new(window_width, window_height))
+                    .with_window_icon(window_icon.clone())
                     .build(event_loop_window_target)
                 {
                     Ok(w) => w,
@@ -553,6 +566,7 @@ fn run_loopback_desktop(
                 };
                 let child_proxy = proxy.clone();
                 let child_webview = match WebViewBuilder::new()
+                    .with_incognito(true)
                     .with_url(&url)
                     .with_new_window_req_handler(move |next_url, _features| {
                         tracing::info!("Desktop new window request: {}", next_url);
@@ -589,10 +603,12 @@ fn run_ipc_desktop(config: AppConfig, window: DesktopWindowSettings, hooks: Desk
     let window_title = window.title.clone();
     let window_width = window.width;
     let window_height = window.height;
+    let window_icon = hooks.window_icon.clone();
 
     let window = WindowBuilder::new()
         .with_title(window.title)
         .with_inner_size(LogicalSize::new(window.width, window.height))
+        .with_window_icon(hooks.window_icon.clone())
         .build(&event_loop)
         .expect("failed to create window");
     let main_window_id = window.id();
@@ -603,6 +619,7 @@ fn run_ipc_desktop(config: AppConfig, window: DesktopWindowSettings, hooks: Desk
     let proxy_for_ipc = proxy.clone();
     let proxy_for_new_window = proxy.clone();
     let webview = WebViewBuilder::new()
+        .with_incognito(true)
         .with_custom_protocol("mycela".into(), move |_webview_id, request| {
             (protocol_response)(&protocol_config, &protocol_token, request)
         })
@@ -733,6 +750,7 @@ fn run_ipc_desktop(config: AppConfig, window: DesktopWindowSettings, hooks: Desk
                 let child_window = match WindowBuilder::new()
                     .with_title(window_title.clone())
                     .with_inner_size(LogicalSize::new(window_width, window_height))
+                    .with_window_icon(window_icon.clone())
                     .build(event_loop_window_target)
                 {
                     Ok(window) => window,
@@ -749,6 +767,7 @@ fn run_ipc_desktop(config: AppConfig, window: DesktopWindowSettings, hooks: Desk
                 let child_proxy_for_new_window = proxy.clone();
 
                 let child_webview = match WebViewBuilder::new()
+                    .with_incognito(true)
                     .with_custom_protocol("mycela".into(), move |_webview_id, request| {
                         (child_protocol_response)(
                             &child_protocol_config,

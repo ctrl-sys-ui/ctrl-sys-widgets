@@ -50,20 +50,28 @@ impl Led {
                     ctx_publish.publish_widget_value(&widget_id_publish, cv.clone());
                 }
             });
-        let mut last_value: Option<ChannelValue> = None;
         while let Some(event) = stream.next().await {
             let html = match event {
                 ChannelEvent::Value(cv)          => {
-                    last_value = Some(cv.clone());
+                    ctx_clone.set_widget_connected(&widget_id, true);
                     render_inner_connected(&config, &cv).into_string()
                 }
                 ChannelEvent::Disconnected(_)
                 | ChannelEvent::Error(_)         => {
-                    render_inner_disconnected_with_last(&config, last_value.as_ref()).into_string()
+                    ctx_clone.set_widget_connected(&widget_id, false);
+                    // Invalidate cached value so downstream logic cannot treat stale LED state as live truth.
+                    ctx_clone.publish_widget_value(&widget_id, ChannelValue::default());
+                    render_inner_disconnected(&config).into_string()
                 }
-                ChannelEvent::Connected          => continue,
+                ChannelEvent::Connected          => {
+                    ctx_clone.set_widget_connected(&widget_id, true);
+                    continue;
+                }
             };
-            if tx.send(html).is_err() { break; }
+            if tx.send(html).is_err() {
+                ctx_clone.set_widget_connected(&widget_id, false);
+                break;
+            }
         }
     }
 }
@@ -87,17 +95,7 @@ pub fn render_inner_connected(config: &WidgetConfig, cv: &ChannelValue) -> Marku
 }
 
 pub fn render_inner_disconnected(config: &WidgetConfig) -> Markup {
-    render_inner_disconnected_with_last(config, None)
-}
-
-pub fn render_inner_disconnected_with_last(config: &WidgetConfig, last_value: Option<&ChannelValue>) -> Markup {
-    let invert = config.invert.unwrap_or(false);
-    let is_on = match last_value {
-        Some(cv) if cv.raw_value == 0.0 => false ^ invert,
-        Some(cv) if cv.raw_value == 1.0 => true ^ invert,
-        Some(cv) => cv.raw_value > 0.5,
-        None => false,
-    };
+    let is_on = false;
     let tooltip = super::tooltips::build_disconnected_tooltip(config);
     render_led_html(config, is_on, Some(super::OFFLINE_SVG), true, &tooltip)
 }

@@ -24,7 +24,7 @@ impl ToggleButton {
         let (tx, rx) = tokio::sync::mpsc::unbounded_channel::<String>();
         let config = Arc::new(self.config);
 
-        tokio::spawn(Self::run_monitor_async(config.clone(), ctx, tx));
+        tokio::spawn(Self::run_monitor_async(config.clone(), ctx.clone(), tx));
 
         async_stream::stream! {
             yield Ok(axum::response::sse::Event::default().data(
@@ -43,14 +43,8 @@ pub fn render_inner_connected(config: &WidgetConfig, cv: &ChannelValue) -> Marku
 }
 
 pub fn render_inner_disconnected(config: &WidgetConfig) -> Markup {
-    render_inner_disconnected_with_last(config, None)
-}
-
-fn render_inner_disconnected_with_last(config: &WidgetConfig, last: Option<&ChannelValue>) -> Markup {
-    let is_on = last.map(|cv| cv.raw_value > 0.5).unwrap_or(false);
-    let next_val = if is_on { "0" } else { "1" };
     let tooltip = super::tooltips::build_disconnected_tooltip(config);
-    render_toggle_html(config, is_on, next_val, true, &tooltip, None)
+    render_toggle_html(config, false, "1", true, &tooltip, None)
 }
 
 fn render_toggle_html(
@@ -182,8 +176,9 @@ impl ToggleButton {
         let mut enabled_rx = ctx.subscribe_widget_enabled(&config.id);
         let mut stream = crate::channel::channel_stream(config.clone(), ctx.clone());
         let mut countdown_end: Option<Instant> = None;
-        let mut last_value: Option<ChannelValue> = None;
-        let mut is_connected = true;
+        let mut current_value: ChannelValue = ChannelValue::default();
+        let mut is_connected = false;
+        let mut enabled = *enabled_rx.borrow();
         let mut last_html = String::new();
 
         let send_if_changed = |tx: &tokio::sync::mpsc::UnboundedSender<String>,
@@ -196,6 +191,38 @@ impl ToggleButton {
                 true
             }
         };
+
+        let render_and_send = |tx: &tokio::sync::mpsc::UnboundedSender<String>,
+                                last_html: &mut String,
+                                config: &Arc<WidgetConfig>,
+                                current_value: &ChannelValue,
+                                connected: bool,
+                                enabled: bool,
+                                countdown_end: Option<Instant>| {
+            let countdown_secs = countdown_end
+                .and_then(|end| end.checked_duration_since(Instant::now()))
+                .map(|d| d.as_secs().max(1));
+            publish_countdown_secs(&ctx, &config.id, countdown_secs.unwrap_or(0));
+            let html = if connected {
+                render_inner_connected_with_countdown(config, current_value, countdown_secs, enabled)
+                    .into_string()
+            } else {
+                render_inner_disconnected(config).into_string()
+            };
+            send_if_changed(tx, last_html, html)
+        };
+
+        if !render_and_send(
+            &tx,
+            &mut last_html,
+            &config,
+            &current_value,
+            is_connected,
+            enabled,
+            countdown_end,
+        ) {
+            return;
+        }
 
         loop {
             let next_tick = countdown_end.map(|_| Instant::now() + Duration::from_secs(1));
@@ -217,10 +244,20 @@ impl ToggleButton {
                 | NextEvent::Channel(Some(ChannelEvent::Error(_))) => {
                     is_connected = false;
                     ctx_clone.set_widget_connected(&widget_id, false);
+                    // Invalidate stale cached value on disconnect.
+                    current_value = ChannelValue::default();
+                    ctx_clone.publish_widget_value(&widget_id, current_value.clone());
                     countdown_end = None;
                     publish_countdown_secs(&ctx, &config.id, 0);
-                    let html = render_inner_disconnected_with_last(&config, last_value.as_ref()).into_string();
-                    if !send_if_changed(&tx, &mut last_html, html) {
+                    if !render_and_send(
+                        &tx,
+                        &mut last_html,
+                        &config,
+                        &current_value,
+                        is_connected,
+                        enabled,
+                        countdown_end,
+                    ) {
                         break;
                     }
                 }
@@ -240,45 +277,39 @@ impl ToggleButton {
                         countdown_end = None;
                     }
 
-                    let now = Instant::now();
-                    let countdown_secs = countdown_end
-                        .and_then(|end| end.checked_duration_since(now))
-                        .map(|d| d.as_secs().max(1));
-                    publish_countdown_secs(&ctx, &config.id, countdown_secs.unwrap_or(0));
-
-                    let enabled = *enabled_rx.borrow();
-                    last_value = Some(cv.clone());
-                    let html = render_inner_connected_with_countdown(&config, &cv, countdown_secs, enabled)
-                        .into_string();
-                    if !send_if_changed(&tx, &mut last_html, html) {
+                    current_value = cv.clone();
+                    enabled = *enabled_rx.borrow();
+                    if !render_and_send(
+                        &tx,
+                        &mut last_html,
+                        &config,
+                        &current_value,
+                        is_connected,
+                        enabled,
+                        countdown_end,
+                    ) {
+                        ctx_clone.set_widget_connected(&widget_id, false);
                         break;
                     }
                 }
                 NextEvent::EnabledChanged => {
-                    let enabled = *enabled_rx.borrow();
-                    let html = if is_connected {
-                        match &last_value {
-                            Some(cv) => {
-                                let now = Instant::now();
-                                let countdown_secs = countdown_end
-                                    .and_then(|end| end.checked_duration_since(now))
-                                    .map(|d| d.as_secs().max(1));
-                                render_inner_connected_with_countdown(&config, cv, countdown_secs, enabled).into_string()
-                            }
-                            None => render_inner_disconnected(&config).into_string(),
-                        }
-                    } else {
-                        render_inner_disconnected_with_last(&config, last_value.as_ref()).into_string()
-                    };
-                    if !send_if_changed(&tx, &mut last_html, html) { break; }
+                    enabled = *enabled_rx.borrow();
+                    if !render_and_send(
+                        &tx,
+                        &mut last_html,
+                        &config,
+                        &current_value,
+                        is_connected,
+                        enabled,
+                        countdown_end,
+                    ) {
+                        ctx_clone.set_widget_connected(&widget_id, false);
+                        break;
+                    }
                 }
                 NextEvent::Tick => {
-                    if let (Some(end), Some(cv)) = (countdown_end, last_value.as_ref()) {
-                        let now = Instant::now();
-                        let countdown_secs =
-                            end.checked_duration_since(now).map(|d| d.as_secs().max(1));
-
-                        if countdown_secs.is_none() {
+                    if let Some(end) = countdown_end {
+                        if end.checked_duration_since(Instant::now()).is_none() {
                             // Countdown has expired.  Write reset_default to the channel so
                             // the PV/register is actually reset.  
                             // This fires unconditionally
@@ -286,8 +317,7 @@ impl ToggleButton {
                             // channel event — so the button always resets after the timeout.
 
                             // Check if value is already at reset_default; if so, don't write again.
-                            let current_value = cv.raw_value;
-                            if Some(current_value) == config.reset_default {
+                            if Some(current_value.raw_value) == config.reset_default {
                                 tracing::info!(
                                     "[{}] toggle countdown expired — already at reset_default={:?}, not writing",
                                     config.id,
@@ -300,7 +330,6 @@ impl ToggleButton {
                                     config.reset_default
                                 );
                                 
-                                countdown_end = None;
                                 publish_countdown_secs(&ctx, &config.id, 0);
                                 let reset_value = config.reset_default.unwrap_or(0.0).round() as i64;
                                 let reset_value_str = reset_value.to_string();
@@ -320,20 +349,32 @@ impl ToggleButton {
                                     .await;
                                 });
                             }
-                            // Don't push an SSE update here; wait for the channel to echo
-                            // back the written value so the button transitions directly
-                            // from the last countdown tick to OFF with no "pressed" flash.
-                        } else {
-                            publish_countdown_secs(&ctx, &config.id, countdown_secs.unwrap_or(0));
-                            let html = render_inner_connected_with_countdown(
+                            countdown_end = None;
+                            if !render_and_send(
+                                &tx,
+                                &mut last_html,
                                 &config,
-                                cv,
-                                countdown_secs,
-                                *enabled_rx.borrow(),
-                            )
-                            .into_string();
-                            if !send_if_changed(&tx, &mut last_html, html) {
-                            break;
+                                &current_value,
+                                is_connected,
+                                enabled,
+                                countdown_end,
+                            ) {
+                                ctx_clone.set_widget_connected(&widget_id, false);
+                                break;
+                            }
+                        } else {
+                            enabled = *enabled_rx.borrow();
+                            if !render_and_send(
+                                &tx,
+                                &mut last_html,
+                                &config,
+                                &current_value,
+                                is_connected,
+                                enabled,
+                                countdown_end,
+                            ) {
+                                ctx_clone.set_widget_connected(&widget_id, false);
+                                break;
                             }
                         }
                     }

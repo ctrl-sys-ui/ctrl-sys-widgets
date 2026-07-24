@@ -534,6 +534,10 @@
         }
 
         if (window.htmx) {
+            window.htmx.onLoad(function(elt) {
+                bindWidgetWrites(elt || document);
+            });
+
             document.body.addEventListener('htmx:beforeRequest', function(event) {
                 const source = event.detail && event.detail.elt;
                 if (isDisabledWidgetWriteElement(source)) {

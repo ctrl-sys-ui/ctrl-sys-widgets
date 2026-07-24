@@ -564,6 +564,7 @@ impl Chart {
                 ChannelEvent::Connected => continue,
             };
             if tx.send(html).is_err() {
+                ctx_clone.set_widget_connected(&widget_id, false);
                 break;
             }
         }

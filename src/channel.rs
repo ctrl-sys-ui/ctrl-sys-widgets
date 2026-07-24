@@ -112,7 +112,7 @@ pub struct ChannelContext {
     pub modbus_pool: Arc<crate::modbus_client::ModbusPool>,
     #[cfg(feature = "modbus-server")]
     pub modbus_bridge: Arc<crate::modbus_bridge::ModbusBridgeContext>,
-    /// Per-widget enabled/disabled state bus. `false` = enabled (default).
+    /// Per-widget enabled/disabled state bus. `true` = enabled (default for unmanaged widgets).
     pub widget_enabled: DashMap<String, watch::Sender<bool>>,
     /// Per-widget latest-value bus, for app-logic subscriptions.
     pub widget_value_bus: DashMap<String, watch::Sender<ChannelValue>>,
@@ -135,12 +135,12 @@ impl ChannelContext {
         }
     }
 
-    /// Subscribe to the enabled state of a widget. Returns `false` by default
-    /// if no explicit state has been set yet.
+    /// Subscribe to the enabled state of a widget. Returns `true` (enabled) by default
+    /// when no explicit state has been set yet, so unmanaged widgets are active once connected.
     pub fn subscribe_widget_enabled(&self, widget_id: &str) -> watch::Receiver<bool> {
         self.widget_enabled
             .entry(widget_id.to_string())
-            .or_insert_with(|| watch::channel(false).0)
+            .or_insert_with(|| watch::channel(true).0)
             .subscribe()
     }
 
@@ -156,10 +156,14 @@ impl ChannelContext {
         }
     }
 
-    /// Subscribe to the latest channel value stream for a widget.
-    /// Useful for app-level logic that reacts to live data (e.g. enable/disable
-    /// controls based on sensor readings).
-    pub fn subscribe_widget_value(&self, widget_id: &str) -> watch::Receiver<ChannelValue> {
+    /// Subscribe to the latest channel value stream for a widget, will trigger updates even if the value hasn't changed.
+    /// 
+    /// Useful for app-level logic that reacts to live data (e.g. enable/disable controls based on sensor readings).
+    /// 
+    /// Note: uses a send_replace watch receiver, so every successful poll can trigger a change/update to the subscriber,
+    /// even if the value hasn't changed. This is useful for widgets that want to know when a poll has completed, 
+    /// even if the value hasn't changed.
+    pub fn subscribe_widget_value_updates(&self, widget_id: &str) -> watch::Receiver<ChannelValue> {
         self.widget_value_bus
             .entry(widget_id.to_string())
             .or_insert_with(|| watch::channel(ChannelValue::default()).0)
@@ -188,6 +192,23 @@ impl ChannelContext {
             .get(widget_id)
             .map(|tx| *tx.borrow())
             .unwrap_or(true)
+    }
+
+    /// Subscribe to the latest known connection state for a widget, will trigger updates even if the state hasn't changed.
+    ///
+    /// Note: uses a send_replace watch receiver, so every successful poll can trigger a change/update to the subscriber,
+    /// even if the connection state hasn't changed. This is useful for widgets that want to know 
+    /// when a poll has completed, even if the connection state hasn't changed.
+    /// 
+    /// Defaults to `true` when no monitor has published state yet to preserve
+    /// existing startup behavior for unmanaged widgets.
+    /// 
+    /// TODO: considering changing default to `false` once all widgets are managed by a monitor.
+    pub fn subscribe_widget_connection_updates(&self, widget_id: &str) -> watch::Receiver<bool> {
+        self.widget_connected
+            .entry(widget_id.to_string())
+            .or_insert_with(|| watch::channel(true).0)
+            .subscribe()
     }
 
     #[cfg(all(feature = "epics", feature = "modbus"))]

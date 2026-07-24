@@ -44,7 +44,7 @@ pub fn build_hooks() -> DesktopRuntimeHooks {
                 .route("/static/htmx.min.js", get(assets::serve_htmx))
                 .route("/static/style.css", get(assets::serve_css))
                 .route("/static/tooltip.js", get(assets::serve_tooltip))
-                .route("/static/desktop_transport.js", get(assets::serve_desktop_transport))
+                .route("/static/client_transport.js", get(assets::serve_client_transport))
                 .route(APP_BACKGROUND_ASSET_PATH, get(assets::serve_background_svg))
                 .with_state(state)
         },
