@@ -10,7 +10,7 @@ pub fn setup_server_pvs(
     let mut created: HashSet<String> = HashSet::new();
 
     for widget in &data_widgets {
-        let epics = match widget.epics_pva() {
+        let epics = match widget.epics_pvxs() {
             Some(e) => e,
             None => continue,
         };

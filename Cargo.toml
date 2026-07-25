@@ -72,8 +72,8 @@ winit = { version = "0.30", optional = true }
 tao   = { version = "0.35.3", optional = true }
 
 [features]
-default = ["epics", "modbus"]
-epics          = ["dep:pvxs-sys"]
+default = ["epics-pvxs", "modbus"]
+epics-pvxs     = ["dep:pvxs-sys"]
 modbus         = ["dep:tokio-modbus"]
 modbus-server  = ["dep:tokio-modbus", "tokio-modbus/tcp-server"]
 desktop        = ["dep:wry", "dep:winit", "dep:tao"]

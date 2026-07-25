@@ -12,7 +12,7 @@ pub mod logging;
 // Declare all protocol backends here so `channel_stream` can route to them.
 // All protocols other than "local" should be behind feature flags so they can be optional dependencies.
 pub mod local_channel;
-#[cfg(feature = "epics")]
+#[cfg(feature = "epics-pvxs")]
 pub mod epics_channel;
 #[cfg(feature = "modbus")]
 pub mod modbus_client;
@@ -21,7 +21,7 @@ pub mod modbus_server;
 #[cfg(feature = "modbus-server")]
 pub mod modbus_bridge;
 pub mod protocol_control;
-#[cfg(feature = "epics")]
+#[cfg(feature = "epics-pvxs")]
 pub mod server_setup;
 pub mod widgets;
 
@@ -32,7 +32,7 @@ pub use maud;
 pub use tower_http;
 pub use tokio_stream;
 pub use async_stream;
-#[cfg(feature = "epics")]
+#[cfg(feature = "epics-pvxs")]
 pub use pvxs_sys;
 #[cfg(feature = "desktop")]
 pub use winit;

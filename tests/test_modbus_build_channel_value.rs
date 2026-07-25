@@ -2,7 +2,7 @@
 
 mod test_modbus_build_channel_value {
     use mycela::config::{
-        AlarmMetadata, ControlMetadata, DisplayMetadata, ModbusTCPConfig, ModbusRegisterType,
+        AlarmMetadata, ControlMetadata, DisplayMetadata, ModbusTcpConfig, ModbusRegisterType,
         PvMetadata, WidgetConfig, WidgetType,
     };
     use mycela::modbus_client::build_channel_value;
@@ -17,8 +17,8 @@ mod test_modbus_build_channel_value {
     }
 
     /// Modbus TCP channel on localhost:502, register 1000, scale/offset as given.
-    fn modbus_channel(scale: f64, offset: f64) -> ModbusTCPConfig {
-        ModbusTCPConfig {
+    fn modbus_channel(scale: f64, offset: f64) -> ModbusTcpConfig {
+        ModbusTcpConfig {
             host: "127.0.0.1".to_string(),
             port: 502,
             unit_id: 1,

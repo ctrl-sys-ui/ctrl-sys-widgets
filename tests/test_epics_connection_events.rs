@@ -1,4 +1,4 @@
-#![cfg(feature = "epics")]
+#![cfg(feature = "epics-pvxs")]
 
 mod test_epics_connection_events {
     use std::sync::{Arc, Mutex};
@@ -7,7 +7,7 @@ mod test_epics_connection_events {
     use tokio_stream::StreamExt;
 
     use mycela::channel::ChannelEvent;
-    use mycela::config::{EpicsPvaConfig, ProtocolConfig, WidgetConfig, WidgetType};
+    use mycela::config::{EpicsPvxsConfig, ProtocolConfig, WidgetConfig, WidgetType};
     use mycela::epics_channel::epics_stream;
 
     fn epics_widget(pv_name: &str) -> Arc<WidgetConfig> {
@@ -15,7 +15,7 @@ mod test_epics_connection_events {
             id: "epics-test".to_string(),
             widget_type: WidgetType::TextUpdate,
             label: "EPICS test".to_string(),
-            protocol: Some(ProtocolConfig::EpicsPva(EpicsPvaConfig {
+            protocol: Some(ProtocolConfig::EpicsPvxs(EpicsPvxsConfig {
                 pv_name: pv_name.to_string(),
                 server: None,
                 pv_names: None,

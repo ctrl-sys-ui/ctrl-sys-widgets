@@ -37,12 +37,11 @@ fn find_widget_by_id(state: &AppState, widget_id: &str) -> Option<WidgetConfig> 
         .find(|widget| widget.id == widget_id)
 }
 
-#[cfg(feature = "epics")]
+#[cfg(feature = "epics-pvxs")]
 fn widget_is_epics(widget: &WidgetConfig) -> bool {
-    matches!(widget.protocol.as_ref(), Some(ProtocolConfig::EpicsPva(_)))
+    matches!(widget.protocol.as_ref(), Some(ProtocolConfig::EpicsPvxs(_)))
 }
-
-#[cfg(not(feature = "epics"))]
+#[cfg(not(feature = "epics-pvxs"))]
 fn widget_is_epics(_widget: &WidgetConfig) -> bool {
     false
 }
@@ -161,14 +160,14 @@ pub async fn dispatch_request(
             }
         }
         IpcCommand::EpicsServerStart => {
-            #[cfg(feature = "epics")]
+            #[cfg(feature = "epics-pvxs")]
             {
                 match protocol_control::start_epics_runtime(state).await {
                     Ok(()) => ok_response(&request.id, json!({ "running": true })),
                     Err(error) => protocol_error_response(&request.id, error),
                 }
             }
-            #[cfg(not(feature = "epics"))]
+            #[cfg(not(feature = "epics-pvxs"))]
             {
                 error_response(
                     &request.id,
@@ -178,14 +177,14 @@ pub async fn dispatch_request(
             }
         }
         IpcCommand::EpicsServerStop => {
-            #[cfg(feature = "epics")]
+            #[cfg(feature = "epics-pvxs")]
             {
                 match protocol_control::stop_epics_server(state).await {
                     Ok(()) => ok_response(&request.id, json!({ "running": false })),
                     Err(error) => protocol_error_response(&request.id, error),
                 }
             }
-            #[cfg(not(feature = "epics"))]
+            #[cfg(not(feature = "epics-pvxs"))]
             {
                 error_response(
                     &request.id,
@@ -195,11 +194,11 @@ pub async fn dispatch_request(
             }
         }
         IpcCommand::EpicsServerStatusGet => {
-            #[cfg(feature = "epics")]
+            #[cfg(feature = "epics-pvxs")]
             {
                 ok_response(&request.id, json!({ "running": state.is_server_running() }))
             }
-            #[cfg(not(feature = "epics"))]
+            #[cfg(not(feature = "epics-pvxs"))]
             {
                 ok_response(&request.id, json!({ "running": false }))
             }

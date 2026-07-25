@@ -584,8 +584,8 @@ fn build_chart_tooltip(config: &WidgetConfig, raw: &ChannelValue) -> String {
 
     let protocol_label = match &config.protocol {
         Some(ProtocolConfig::Local(_)) => "Local",
-        #[cfg(feature = "epics")]
-        Some(ProtocolConfig::EpicsPva(_)) => "EPICS PVA",
+        #[cfg(feature = "epics-pvxs")]
+        Some(ProtocolConfig::EpicsPvxs(_)) => "EPICS PVA",
         #[cfg(feature = "modbus")]
         Some(ProtocolConfig::ModbusTcp(_)) => "Modbus TCP",
         _ => "None",
@@ -616,8 +616,8 @@ fn build_chart_tooltip(config: &WidgetConfig, raw: &ChannelValue) -> String {
     match chart_type {
         "scatter" | "scatter_histogram" => {
             // pv_name → X axis, first name in pv_names → Y axis
-            #[cfg(feature = "epics")]
-            if let Some(epics) = config.epics_pva() {
+            #[cfg(feature = "epics-pvxs")]
+            if let Some(epics) = config.epics_pvxs() {
                 t.push_str(&format!("X data:  {}\n", epics.pv_name));
                 if let Some(names) = &epics.pv_names {
                     if let Some(y_pv) = names.first() {
@@ -627,7 +627,7 @@ fn build_chart_tooltip(config: &WidgetConfig, raw: &ChannelValue) -> String {
             } else {
                 t.push_str(&format!("Channel: {}\n", config.channel_address()));
             }
-            #[cfg(not(feature = "epics"))]
+            #[cfg(not(feature = "epics-pvxs"))]
             t.push_str(&format!("Channel: {}\n", config.channel_address()));
         }
         "histogram" => {
@@ -672,8 +672,8 @@ fn build_chart_tooltip(config: &WidgetConfig, raw: &ChannelValue) -> String {
 /// Collect all PV names for a multi-series line chart (primary + extras from EpicsPva config).
 fn collect_series_pvs(config: &WidgetConfig) -> Vec<String> {
     match &config.protocol {
-        #[cfg(feature = "epics")]
-        Some(crate::config::ProtocolConfig::EpicsPva(e)) => e.series_pvs(),
+        #[cfg(feature = "epics-pvxs")]
+        Some(crate::config::ProtocolConfig::EpicsPvxs(e)) => e.series_pvs(),
         _ => Vec::new(),
     }
 }

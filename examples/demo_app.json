@@ -5,7 +5,7 @@
     {
       "id": "epics",
       "title": "EPICS Widgets",
-      "description": "Live EPICS PVA widget showcase",
+      "description": "Live EPICS PVXS widget showcase",
       "actions": [
         { "type": "navigate", "label": "Modbus Widgets >", "to": "modbus" },
         { "type": "window",   "label": "Open Modbus in new window", "to": "modbus" },
@@ -28,7 +28,7 @@
               "description": "Editable numeric field with live alarm feedback",
               "style": { "width": "100%", "height": "auto" },
               "protocol": {
-                "type": "epics-pva",
+                "type": "epics-pvxs",
                 "pv_name": "demo:double",
                 "server": { "alarm_serverity": "NONE", "alarm_status": "NO_ALARM" }
               },
@@ -45,7 +45,7 @@
               "data_type": "double",
               "description": "Read-only live value display",
               "style": { "width": "100%", "height": "auto" },
-              "protocol": { "type": "epics-pva", "pv_name": "demo:double" },
+              "protocol": { "type": "epics-pvxs", "pv_name": "demo:double" },
               "metadata": {
                 "display": { "limit_low": 0.0, "limit_high": 100.0, "description": "Horizontal stage position", "precision": 3, "units": "mm" },
                 "control": { "limit_low": 0.0, "limit_high": 100.0, "min_step": 0.1 },
@@ -60,7 +60,7 @@
               "description": "Analogue bar gauge with alarm zones",
               "orientation": "horizontal",
               "style": { "width": "100%", "height": "auto" },
-              "protocol": { "type": "epics-pva", "pv_name": "demo:double" },
+              "protocol": { "type": "epics-pvxs", "pv_name": "demo:double" },
               "metadata": {
                 "display": { "limit_low": 0.0, "limit_high": 100.0, "description": "Horizontal stage position", "precision": 3, "units": "mm" },
                 "control": { "limit_low": 0.0, "limit_high": 100.0, "min_step": 0.1 },
@@ -84,7 +84,7 @@
               "description": "Drag range control with live setpoint",
               "style": { "width": "100%", "height": "auto" },
               "protocol": {
-                "type": "epics-pva",
+                "type": "epics-pvxs",
                 "pv_name": "demo:slider",
                 "server": { "alarm_serverity": "NONE", "alarm_status": "NO_ALARM" }
               },
@@ -102,7 +102,7 @@
               "description": "Enum dropdown backed by NTEnum PV",
               "style": { "width": "100%", "height": "30px" },
               "options": ["Off", "Manual", "Auto", "Remote"],
-              "protocol": { "type": "epics-pva", "pv_name": "demo:mode:select", "server": { "alarm_serverity": "NONE", "alarm_status": "NO_ALARM" } }
+              "protocol": { "type": "epics-pvxs", "pv_name": "demo:mode:select", "server": { "alarm_serverity": "NONE", "alarm_status": "NO_ALARM" } }
             }
           ]
         },
@@ -121,7 +121,7 @@
               "description": "Momentary action button — sends value 1 on click",
               "style": { "width": "100%", "height": "auto" },
               "protocol": {
-                "type": "epics-pva",
+                "type": "epics-pvxs",
                 "pv_name": "demo:heater:cmd",
                 "server": { "alarm_serverity": "NONE", "alarm_status": "NO_ALARM" }
               }
@@ -133,7 +133,7 @@
               "data_type": "bool",
               "description": "Binary on/off indicator with glow effect",
               "style": { "width": "100%", "height": "auto" },
-              "protocol": { "type": "epics-pva", "pv_name": "demo:heater:cmd" }
+              "protocol": { "type": "epics-pvxs", "pv_name": "demo:heater:cmd" }
             },
             {
               "id": "toggle_button_dark",
@@ -142,7 +142,7 @@
               "data_type": "bool",
               "description": "Toggle button — reflects live PV state, sends opposite value on click. Will reset to default 0 after 5s",
               "style": { "width": "100%", "height": "auto" },
-              "protocol": { "type": "epics-pva", "pv_name": "demo:heater:cmd" },
+              "protocol": { "type": "epics-pvxs", "pv_name": "demo:heater:cmd" },
               "reset_timeout": 5000, "reset_default": 0
             }
           ]
@@ -167,7 +167,7 @@
               "description": "Single-series rolling line chart",
               "style": { "width": "100%", "height": "auto" },
               "protocol": {
-                "type": "epics-pva",
+                "type": "epics-pvxs",
                 "pv_name": "demo:temp:sensor",
                 "server": {
                   "alarm_serverity": "NONE",
@@ -190,7 +190,7 @@
               "description": "Up to 6 PVs on one line chart",
               "style": { "width": "100%", "height": "auto" },
               "protocol": {
-                "type": "epics-pva",
+                "type": "epics-pvxs",
                 "pv_name": "demo:pressure:sensor",
                 "pv_names": ["demo:flow:sensor", "demo:vibration:sensor"],
                 "server": {
@@ -214,7 +214,7 @@
               "description": "Histogram of noise signal distribution",
               "style": { "width": "100%", "height": "auto" },
               "protocol": {
-                "type": "epics-pva",
+                "type": "epics-pvxs",
                 "pv_name": "demo:noise:sensor",
                 "server": {
                   "alarm_serverity": "NONE",
@@ -237,7 +237,7 @@
               "description": "Scatter plot — interleaved [x0,y0, x1,y1, …] array",
               "style": { "width": "100%", "height": "auto" },
               "protocol": {
-                "type": "epics-pva",
+                "type": "epics-pvxs",
                 "pv_name": "demo:scatter:xy",
                 "server": {
                   "alarm_serverity": "NONE",

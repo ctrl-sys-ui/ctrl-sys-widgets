@@ -19,7 +19,7 @@ mod test_widgets_disconnection_response {
 
     use mycela::channel::ChannelContext;
     use mycela::config::{
-        ModbusRegisterType, ModbusTCPConfig, ProtocolConfig, WidgetConfig, WidgetType,
+        ModbusRegisterType, ModbusTcpConfig, ProtocolConfig, WidgetConfig, WidgetType,
     };
     use mycela::modbus_client::ModbusPool;
     use mycela::widgets::run_widget_monitor_async;
@@ -84,7 +84,7 @@ mod test_widgets_disconnection_response {
             id: "w".to_string(),
             widget_type,
             label: "test widget".to_string(),
-            protocol: Some(ProtocolConfig::ModbusTcp(ModbusTCPConfig {
+            protocol: Some(ProtocolConfig::ModbusTcp(ModbusTcpConfig {
                 host: "127.0.0.1".to_string(),
                 port,
                 unit_id: 1,
@@ -103,7 +103,7 @@ mod test_widgets_disconnection_response {
     /// Build a `ChannelContext` for Modbus-only tests.
     /// When the `epics` feature is also active a no-op EPICS context is included.
     fn make_ctx(pool: Arc<ModbusPool>) -> Arc<ChannelContext> {
-        #[cfg(feature = "epics")]
+        #[cfg(feature = "epics-pvxs")]
         {
             use std::sync::Mutex;
             let epics_ctx = Arc::new(Mutex::new(
@@ -111,7 +111,7 @@ mod test_widgets_disconnection_response {
             ));
             ChannelContext::new(epics_ctx, pool)
         }
-        #[cfg(not(feature = "epics"))]
+        #[cfg(not(feature = "epics-pvxs"))]
         {
             ChannelContext::new(pool)
         }

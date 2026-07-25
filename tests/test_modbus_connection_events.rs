@@ -9,7 +9,7 @@ mod test_modbus_connection_events {
     use tokio_stream::StreamExt;
 
     use mycela::channel::ChannelEvent;
-    use mycela::config::{ModbusTCPConfig, ModbusRegisterType, ProtocolConfig, WidgetConfig, WidgetType};
+    use mycela::config::{ModbusTcpConfig, ModbusRegisterType, ProtocolConfig, WidgetConfig, WidgetType};
     use mycela::modbus_client::{modbus_stream, ModbusPool};
 
     // ── in-process mock Modbus TCP server ─────────────────────────────────────
@@ -99,7 +99,7 @@ mod test_modbus_connection_events {
             id: "mb-test".to_string(),
             widget_type: WidgetType::TextUpdate,
             label: "test".to_string(),
-            protocol: Some(ProtocolConfig::ModbusTcp(ModbusTCPConfig {
+            protocol: Some(ProtocolConfig::ModbusTcp(ModbusTcpConfig {
                 host: "127.0.0.1".to_string(),
                 port,
                 unit_id: 1,

@@ -1,10 +1,12 @@
-use std::sync::Arc;
 use dashmap::DashMap;
+use std::sync::Arc;
 use tokio::sync::watch;
 
 // ─── Unified value type ───────────────────────────────────────────────────────
 
 /// A normalised snapshot of a channel value, protocol-independent.
+///
+/// Contains fields designed to be protocol independent.
 ///
 /// Fields that are not meaningful for a given protocol default to safe values
 /// (zero / empty string / 0–100 display range) so widget render functions can
@@ -56,7 +58,7 @@ impl Default for ChannelValue {
             array_values: Vec::new(),
             named_series: Vec::new(),
             alarm_severity: 3, // INVALID
-            alarm_status: 3, // INVALID
+            alarm_status: 3,   // INVALID
             units: String::new(),
             display_low: std::f64::MIN,
             display_high: std::f64::MAX,
@@ -104,9 +106,10 @@ pub enum ChannelEvent {
 /// Holds all protocol-level handles needed to create channel streams.
 /// Passed through `AppState` and into every SSE handler.
 /// Add new protocol handles here when new protocols are introduced.
+#[non_exhaustive]
 pub struct ChannelContext {
     pub local_store: Arc<crate::local_channel::LocalStore>,
-    #[cfg(feature = "epics")]
+    #[cfg(feature = "epics-pvxs")]
     pub epics_ctx: Arc<std::sync::Mutex<pvxs_sys::Context>>,
     #[cfg(feature = "modbus")]
     pub modbus_pool: Arc<crate::modbus_client::ModbusPool>,
@@ -127,7 +130,9 @@ impl ChannelContext {
     /// triggering an immediate re-render without waiting for the next data poll.
     pub fn set_widget_enabled(&self, widget_id: &str, enabled: bool) {
         match self.widget_enabled.get(widget_id) {
-            Some(tx) => { tx.send_replace(enabled); }
+            Some(tx) => {
+                tx.send_replace(enabled);
+            }
             None => {
                 let (tx, _rx) = watch::channel(enabled);
                 self.widget_enabled.insert(widget_id.to_string(), tx);
@@ -148,7 +153,9 @@ impl ChannelContext {
     /// Widget monitors call this so app logic can react to value changes.
     pub fn publish_widget_value(&self, widget_id: &str, cv: ChannelValue) {
         match self.widget_value_bus.get(widget_id) {
-            Some(tx) => { tx.send_replace(cv); }
+            Some(tx) => {
+                tx.send_replace(cv);
+            }
             None => {
                 let (tx, _rx) = watch::channel(cv);
                 self.widget_value_bus.insert(widget_id.to_string(), tx);
@@ -157,11 +164,11 @@ impl ChannelContext {
     }
 
     /// Subscribe to the latest channel value stream for a widget, will trigger updates even if the value hasn't changed.
-    /// 
+    ///
     /// Useful for app-level logic that reacts to live data (e.g. enable/disable controls based on sensor readings).
-    /// 
+    ///
     /// Note: uses a send_replace watch receiver, so every successful poll can trigger a change/update to the subscriber,
-    /// even if the value hasn't changed. This is useful for widgets that want to know when a poll has completed, 
+    /// even if the value hasn't changed. This is useful for widgets that want to know when a poll has completed,
     /// even if the value hasn't changed.
     pub fn subscribe_widget_value_updates(&self, widget_id: &str) -> watch::Receiver<ChannelValue> {
         self.widget_value_bus
@@ -197,12 +204,12 @@ impl ChannelContext {
     /// Subscribe to the latest known connection state for a widget, will trigger updates even if the state hasn't changed.
     ///
     /// Note: uses a send_replace watch receiver, so every successful poll can trigger a change/update to the subscriber,
-    /// even if the connection state hasn't changed. This is useful for widgets that want to know 
+    /// even if the connection state hasn't changed. This is useful for widgets that want to know
     /// when a poll has completed, even if the connection state hasn't changed.
-    /// 
+    ///
     /// Defaults to `true` when no monitor has published state yet to preserve
     /// existing startup behavior for unmanaged widgets.
-    /// 
+    ///
     /// TODO: considering changing default to `false` once all widgets are managed by a monitor.
     pub fn subscribe_widget_connection_updates(&self, widget_id: &str) -> watch::Receiver<bool> {
         self.widget_connected
@@ -211,7 +218,7 @@ impl ChannelContext {
             .subscribe()
     }
 
-    #[cfg(all(feature = "epics", feature = "modbus"))]
+    #[cfg(all(feature = "epics-pvxs", feature = "modbus"))]
     pub fn new(
         epics_ctx: Arc<std::sync::Mutex<pvxs_sys::Context>>,
         modbus_pool: Arc<crate::modbus_client::ModbusPool>,
@@ -228,7 +235,7 @@ impl ChannelContext {
         })
     }
 
-    #[cfg(all(feature = "epics", not(feature = "modbus")))]
+    #[cfg(all(feature = "epics-pvxs", not(feature = "modbus")))]
     pub fn new(epics_ctx: Arc<std::sync::Mutex<pvxs_sys::Context>>) -> Arc<Self> {
         Arc::new(Self {
             local_store: crate::local_channel::LocalStore::new(),
@@ -239,7 +246,7 @@ impl ChannelContext {
         })
     }
 
-    #[cfg(all(not(feature = "epics"), feature = "modbus"))]
+    #[cfg(all(not(feature = "epics-pvxs"), feature = "modbus"))]
     pub fn new(modbus_pool: Arc<crate::modbus_client::ModbusPool>) -> Arc<Self> {
         Arc::new(Self {
             local_store: crate::local_channel::LocalStore::new(),
@@ -252,7 +259,7 @@ impl ChannelContext {
         })
     }
 
-    #[cfg(all(not(feature = "epics"), not(feature = "modbus")))]
+    #[cfg(all(not(feature = "epics-pvxs"), not(feature = "modbus")))]
     pub fn new() -> Arc<Self> {
         Arc::new(Self {
             local_store: crate::local_channel::LocalStore::new(),
@@ -281,11 +288,11 @@ pub fn channel_stream(
             ctx.local_store.clone(),
         ));
     }
-    
-    #[cfg(feature = "epics")]
+
+    #[cfg(feature = "epics-pvxs")]
     if matches!(
         config.protocol.as_ref(),
-        Some(ProtocolConfig::EpicsPva(_)) | None
+        Some(ProtocolConfig::EpicsPvxs(_)) | None
     ) {
         return Box::pin(crate::epics_channel::epics_stream(
             config,

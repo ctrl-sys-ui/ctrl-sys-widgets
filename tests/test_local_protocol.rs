@@ -22,7 +22,7 @@ mod test_local_protocol {
     }
 
     fn channel_ctx() -> Arc<ChannelContext> {
-        #[cfg(feature = "epics")]
+        #[cfg(feature = "epics-pvxs")]
         let epics_ctx = Arc::new(std::sync::Mutex::new(
             mycela::pvxs_sys::Context::from_env().expect("pvxs context required"),
         ));
@@ -30,22 +30,22 @@ mod test_local_protocol {
         #[cfg(feature = "modbus")]
         let modbus_pool = mycela::modbus_client::ModbusPool::new();
 
-        #[cfg(all(feature = "epics", feature = "modbus"))]
+        #[cfg(all(feature = "epics-pvxs", feature = "modbus"))]
         {
             return ChannelContext::new(epics_ctx, modbus_pool);
         }
 
-        #[cfg(all(feature = "epics", not(feature = "modbus")))]
+        #[cfg(all(feature = "epics-pvxs", not(feature = "modbus")))]
         {
             return ChannelContext::new(epics_ctx);
         }
 
-        #[cfg(all(not(feature = "epics"), feature = "modbus"))]
+        #[cfg(all(not(feature = "epics-pvxs"), feature = "modbus"))]
         {
             return ChannelContext::new(modbus_pool);
         }
 
-        #[cfg(all(not(feature = "epics"), not(feature = "modbus")))]
+        #[cfg(all(not(feature = "epics-pvxs"), not(feature = "modbus")))]
         {
             ChannelContext::new()
         }

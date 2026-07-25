@@ -1,6 +1,6 @@
 mod test_config_widget_config {
     use mycela::config::{
-        AppConfig, EpicsPvaConfig, LocalConfig, ModbusTCPConfig, ModbusRegisterType,
+        AppConfig, EpicsPvxsConfig, LocalConfig, ModbusTcpConfig, ModbusRegisterType,
         ProtocolConfig, WidgetConfig, WidgetType,
     };
 
@@ -37,7 +37,7 @@ mod test_config_widget_config {
     #[test]
     fn test_epics_pva_protocol_produces_pv_name_as_channel_address() {
         let mut w = widget("w1", WidgetType::TextUpdate);
-        w.protocol = Some(ProtocolConfig::EpicsPva(EpicsPvaConfig {
+        w.protocol = Some(ProtocolConfig::EpicsPvxs(EpicsPvxsConfig {
             pv_name: "test:pv".to_string(),
             server: None,
             pv_names: None,
@@ -48,7 +48,7 @@ mod test_config_widget_config {
     #[test]
     fn test_modbus_tcp_protocol_produces_url_as_channel_address() {
         let mut w = widget("w2", WidgetType::Gauge);
-        w.protocol = Some(ProtocolConfig::ModbusTcp(ModbusTCPConfig {
+        w.protocol = Some(ProtocolConfig::ModbusTcp(ModbusTcpConfig {
             host: "127.0.0.1".to_string(),
             port: 502,
             unit_id: 1,
@@ -81,19 +81,19 @@ mod test_config_widget_config {
     #[test]
     fn test_epics_pva_accessor_returns_some_and_modbus_returns_none() {
         let mut w = widget("e", WidgetType::TextUpdate);
-        w.protocol = Some(ProtocolConfig::EpicsPva(EpicsPvaConfig {
+        w.protocol = Some(ProtocolConfig::EpicsPvxs(EpicsPvxsConfig {
             pv_name: "x:pv".to_string(),
             server: None,
             pv_names: None,
         }));
-        assert!(w.epics_pva().is_some());
+        assert!(w.epics_pvxs().is_some());
         assert!(w.modbus_tcp().is_none());
     }
 
     #[test]
     fn test_modbus_tcp_accessor_returns_some_and_epics_returns_none() {
         let mut w = widget("m", WidgetType::Gauge);
-        w.protocol = Some(ProtocolConfig::ModbusTcp(ModbusTCPConfig {
+        w.protocol = Some(ProtocolConfig::ModbusTcp(ModbusTcpConfig {
             host: "127.0.0.1".to_string(),
             port: 502,
             unit_id: 1,
@@ -106,7 +106,7 @@ mod test_config_widget_config {
             bit_index: None,
         }));
         assert!(w.modbus_tcp().is_some());
-        assert!(w.epics_pva().is_none());
+        assert!(w.epics_pvxs().is_none());
     }
 
     #[test]
@@ -119,7 +119,7 @@ mod test_config_widget_config {
         assert!(local_widget.local().is_some());
 
         let mut epics_widget = widget("e2", WidgetType::TextUpdate);
-        epics_widget.protocol = Some(ProtocolConfig::EpicsPva(EpicsPvaConfig {
+        epics_widget.protocol = Some(ProtocolConfig::EpicsPvxs(EpicsPvxsConfig {
             pv_name: "x:pv".to_string(),
             server: None,
             pv_names: None,
@@ -129,7 +129,7 @@ mod test_config_widget_config {
 
     #[test]
     fn test_series_pvs_with_only_primary_pv_returns_single_element() {
-        let e = EpicsPvaConfig {
+        let e = EpicsPvxsConfig {
             pv_name: "main:pv".to_string(),
             server: None,
             pv_names: None,
@@ -139,7 +139,7 @@ mod test_config_widget_config {
 
     #[test]
     fn test_series_pvs_with_additional_pv_names_returns_all_combined() {
-        let e = EpicsPvaConfig {
+        let e = EpicsPvxsConfig {
             pv_name: "main:pv".to_string(),
             server: None,
             pv_names: Some(vec!["e1".to_string(), "e2".to_string()]),
@@ -149,7 +149,7 @@ mod test_config_widget_config {
 
     #[test]
     fn test_series_pvs_capped_at_six_total_including_primary() {
-        let e = EpicsPvaConfig {
+        let e = EpicsPvxsConfig {
             pv_name: "main:pv".to_string(),
             server: None,
             pv_names: Some((0..10).map(|i| format!("extra:{i}")).collect()),

@@ -1,6 +1,6 @@
 use crate::app::AppState;
 
-#[cfg(feature = "epics")]
+#[cfg(feature = "epics-pvxs")]
 use crate::server_setup::setup_server_pvs;
 
 #[derive(Debug)]
@@ -24,7 +24,7 @@ impl std::fmt::Display for ProtocolControlError {
 
 impl std::error::Error for ProtocolControlError {}
 
-#[cfg(feature = "epics")]
+#[cfg(feature = "epics-pvxs")]
 pub async fn start_epics_server(state: &AppState) -> Result<pvxs_sys::Server, ProtocolControlError> {
     if state.is_server_running() {
         return Err(ProtocolControlError::AlreadyRunning("EPICS server already running"));
@@ -47,7 +47,7 @@ pub async fn start_epics_server(state: &AppState) -> Result<pvxs_sys::Server, Pr
     }
 }
 
-#[cfg(feature = "epics")]
+#[cfg(feature = "epics-pvxs")]
 pub async fn start_epics_runtime(state: &AppState) -> Result<(), ProtocolControlError> {
     let server = start_epics_server(state).await?;
 
@@ -62,12 +62,12 @@ pub async fn start_epics_runtime(state: &AppState) -> Result<(), ProtocolControl
     Ok(())
 }
 
-#[cfg(feature = "epics")]
+#[cfg(feature = "epics-pvxs")]
 pub fn set_epics_server(state: &AppState, server: pvxs_sys::Server) {
     *state.pv_server.lock().unwrap() = Some(server);
 }
 
-#[cfg(feature = "epics")]
+#[cfg(feature = "epics-pvxs")]
 pub async fn stop_epics_server(state: &AppState) -> Result<(), ProtocolControlError> {
     let server = state.pv_server.lock().unwrap().take();
     let Some(server) = server else {
@@ -81,14 +81,14 @@ pub async fn stop_epics_server(state: &AppState) -> Result<(), ProtocolControlEr
     }
 }
 
-#[cfg(not(feature = "epics"))]
+#[cfg(not(feature = "epics-pvxs"))]
 pub async fn start_epics_runtime(_state: &AppState) -> Result<(), ProtocolControlError> {
     Err(ProtocolControlError::Operation(
         "EPICS feature is not enabled".to_string(),
     ))
 }
 
-#[cfg(not(feature = "epics"))]
+#[cfg(not(feature = "epics-pvxs"))]
 pub async fn stop_epics_server(_state: &AppState) -> Result<(), ProtocolControlError> {
     Err(ProtocolControlError::Operation(
         "EPICS feature is not enabled".to_string(),

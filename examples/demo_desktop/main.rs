@@ -172,7 +172,7 @@ fn build_app_state(config: AppConfig, loopback_token: Option<String>) -> AppStat
     let pv_server = {
         let has_server_pvs = all_widgets
             .iter()
-            .any(|widget| widget.epics_pva().and_then(|epics| epics.server.as_ref()).is_some());
+            .any(|widget| widget.epics_pvxs().and_then(|epics| epics.server.as_ref()).is_some());
 
         if !has_server_pvs {
             tracing::info!("No server PVs configured, running in client-only mode");

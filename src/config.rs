@@ -212,7 +212,7 @@ pub struct WidgetServerConfig {
 #[serde(tag = "type", rename_all = "kebab-case")]
 pub enum WidgetServerProtocolConfig {
     ModbusTcp(WidgetServerModbusTcpConfig),
-    #[cfg(feature = "epics")]
+    #[cfg(feature = "epics-pvxs")]
     EpicsPva(WidgetServerEpicsPvaConfig),
 }
 
@@ -224,7 +224,7 @@ pub struct WidgetServerModbusTcpConfig {
     pub word_count: u8,
 }
 
-#[cfg(all(feature = "modbus", feature = "epics"))]
+#[cfg(all(feature = "modbus", feature = "epics-pvxs"))]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WidgetServerEpicsPvaConfig {
     pub pv_name: String,
@@ -419,7 +419,7 @@ impl AppConfig {
                     let has_server_protocol = server.protocol.is_some();
                     if !is_local || !has_server_protocol {
                         return Err(ConfigError::ValidationError(format!(
-                            "Widget '{}' has server.proxy_register but no bridge protocol format. For local widgets, set server.protocol={{\"type\":\"modbus-tcp\",...}} or server.protocol={{\"type\":\"epics-pva\",...}}",
+                            "Widget '{}' has server.proxy_register but no bridge protocol format. For local widgets, set server.protocol={{\"type\":\"modbus-tcp\",...}} or server.protocol={{\"type\":\"epics-pvxs\",...}}",
                             widget.id
                         )));
                     }
@@ -464,7 +464,7 @@ pub struct ScreenConfig {
 /// Uses serde's internally-tagged enum so JSON looks like:
 /// ```json
 /// { "type": "local", "channel": "app:my:value", ... }
-/// { "type": "epics-pva", "pv_name": "demo:double", ... }
+/// { "type": "epics-pvxs", "pv_name": "demo:double", ... }
 /// { "type": "modbus-tcp", "host": "127.0.0.1", "register": 1000, ... }
 /// ```
 /// Adding a new protocol = one new enum variant + struct, no changes to WidgetConfig.
@@ -476,10 +476,10 @@ pub struct ScreenConfig {
 #[non_exhaustive]
 pub enum ProtocolConfig {
     Local(LocalConfig),
-    #[cfg(feature = "epics")]
-    EpicsPva(EpicsPvaConfig),
+    #[cfg(feature = "epics-pvxs")]
+    EpicsPvxs(EpicsPvxsConfig),
     #[cfg(feature = "modbus")]
-    ModbusTcp(ModbusTCPConfig),
+    ModbusTcp(ModbusTcpConfig),
 }
 
 /// In-process local channel configuration.
@@ -495,10 +495,10 @@ pub struct LocalConfig {
     pub initial_value: Option<String>,
 }
 
-/// EPICS Process Variable Access channel configuration.
-#[cfg(feature = "epics")]
+/// EPICS Process Variable Access channel from PVXS.
+#[cfg(feature = "epics-pvxs")]
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct EpicsPvaConfig {
+pub struct EpicsPvxsConfig {
     /// EPICS PV name (e.g. "demo:double")
     pub pv_name: String,
     /// Optional embedded PVXS server PV definition (creates the PV on start-up)
@@ -511,8 +511,8 @@ pub struct EpicsPvaConfig {
     pub pv_names: Option<Vec<String>>,
 }
 
-#[cfg(feature = "epics")]
-impl EpicsPvaConfig {
+#[cfg(feature = "epics-pvxs")]
+impl EpicsPvxsConfig {
     /// All PV names for this widget — primary first, then up to 5 extra series.
     /// The 6-series cap matches the server-side limit enforced in `setup_server_pvs`.
     pub fn series_pvs(&self) -> Vec<String> {
@@ -527,7 +527,7 @@ impl EpicsPvaConfig {
 /// Modbus TCP channel configuration.
 #[cfg(feature = "modbus")]
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ModbusTCPConfig {
+pub struct ModbusTcpConfig {
     /// Modbus server hostname or IP address
     pub host: String,
     /// TCP port (default: 502)
@@ -706,8 +706,8 @@ impl WidgetConfig {
     pub fn channel_address(&self) -> String {
         match &self.protocol {
             Some(ProtocolConfig::Local(l)) => format!("local://{}", l.channel),
-            #[cfg(feature = "epics")]
-            Some(ProtocolConfig::EpicsPva(e)) => e.pv_name.clone(),
+            #[cfg(feature = "epics-pvxs")]
+            Some(ProtocolConfig::EpicsPvxs(e)) => e.pv_name.clone(),
             #[cfg(feature = "modbus")]
             Some(ProtocolConfig::ModbusTcp(m)) => {
                 format!("modbus-tcp://{}:{}/reg{}", m.host, m.port, m.register)
@@ -724,18 +724,18 @@ impl WidgetConfig {
         }
     }
 
-    /// Returns the `EpicsPvaConfig` if this widget uses the `epics-pva` protocol.
-    #[cfg(feature = "epics")]
-    pub fn epics_pva(&self) -> Option<&EpicsPvaConfig> {
+    /// Returns the `EpicsPvxsConfig` if this widget uses the `epics-pvxs` protocol.
+    #[cfg(feature = "epics-pvxs")]
+    pub fn epics_pvxs(&self) -> Option<&EpicsPvxsConfig> {
         match &self.protocol {
-            Some(ProtocolConfig::EpicsPva(e)) => Some(e),
+            Some(ProtocolConfig::EpicsPvxs(e)) => Some(e),
             _ => None,
         }
     }
 
-    /// Returns the `ModbusTCPConfig` if this widget uses the `modbus-tcp` protocol.
+    /// Returns the `ModbusTcpConfig` if this widget uses the `modbus-tcp` protocol.
     #[cfg(feature = "modbus")]
-    pub fn modbus_tcp(&self) -> Option<&ModbusTCPConfig> {
+    pub fn modbus_tcp(&self) -> Option<&ModbusTcpConfig> {
         match &self.protocol {
             Some(ProtocolConfig::ModbusTcp(m)) => Some(m),
             _ => None,
@@ -744,7 +744,7 @@ impl WidgetConfig {
 }
 
 /// Server configuration for providing an EPICS PV (lives inside `EpicsPvaConfig.server`).
-#[cfg(feature = "epics")]
+#[cfg(feature = "epics-pvxs")]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ServerConfig {
     /// Alarm severity for this PV's initial state. Accepted values: `NONE`, `MINOR`, `MAJOR`, `INVALID`.
@@ -987,7 +987,7 @@ impl ScreenConfig {
             "title" => "The config root must have a 'title' field (string).".to_string(),
             "description" => "The config root must have a 'description' field (string).".to_string(),
             "widgets" => "The config root must have a 'widgets' array containing widget configurations.".to_string(),
-            "pv_name" => "Inside an 'epics-pva' protocol block, 'pv_name' must be set to the EPICS PV name.".to_string(),
+            "pv_name" => "Inside an 'epics-pvxs' protocol block, 'pv_name' must be set to the EPICS PV name.".to_string(),
             "host" => "Inside a 'modbus' protocol block, 'host' must be set to the device IP/hostname.".to_string(),
             "register" => "Inside a 'modbus' protocol block, 'register' must be the register address (u16).".to_string(),
             "register_type" => "Inside a 'modbus' protocol block, 'register_type' must be one of: holding_register, input_register, coil, discrete_input.".to_string(),

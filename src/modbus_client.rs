@@ -8,7 +8,7 @@ use tokio_modbus::client::tcp;
 use tokio_modbus::prelude::*;
 
 use crate::channel::{ChannelEvent, ChannelValue};
-use crate::config::{ModbusRegisterType, ModbusTCPConfig, ProtocolConfig, WidgetConfig};
+use crate::config::{ModbusRegisterType, ModbusTcpConfig, ProtocolConfig, WidgetConfig};
 
 enum DeviceRequest {
     Read {
@@ -374,7 +374,7 @@ pub fn modbus_stream(
 }
 
 async fn run_modbus_poll(
-    m: ModbusTCPConfig,
+    m: ModbusTcpConfig,
     config: Arc<WidgetConfig>,
     pool: Arc<ModbusPool>,
     tx: tokio::sync::mpsc::UnboundedSender<ChannelEvent>,
@@ -499,7 +499,7 @@ fn decode_words(words: &[u16], word_count: u8) -> f64 {
 
 pub fn build_channel_value(
     physical: f64,
-    m: &ModbusTCPConfig,
+    m: &ModbusTcpConfig,
     config: &WidgetConfig,
 ) -> ChannelValue {
     let meta_display = config.metadata.as_ref().and_then(|md| md.display.as_ref());
@@ -574,7 +574,7 @@ pub fn build_channel_value(
 
 /// Write a physical value back to a Modbus register, reversing the scale/offset.
 pub async fn modbus_write(
-    m: &ModbusTCPConfig,
+    m: &ModbusTcpConfig,
     physical_value: f64,
     pool: &ModbusPool,
 ) -> Result<(), String> {

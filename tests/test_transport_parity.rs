@@ -23,7 +23,7 @@ mod test_transport_parity {
             }],
         });
 
-        #[cfg(feature = "epics")]
+        #[cfg(feature = "epics-pvxs")]
         let epics_ctx = Arc::new(Mutex::new(
             mycela::pvxs_sys::Context::from_env().expect("pvxs context required"),
         ));
@@ -31,26 +31,26 @@ mod test_transport_parity {
         #[cfg(feature = "modbus")]
         let modbus_pool = mycela::modbus_client::ModbusPool::new();
 
-        #[cfg(all(feature = "epics", feature = "modbus"))]
+        #[cfg(all(feature = "epics-pvxs", feature = "modbus"))]
         let channel_ctx = ChannelContext::new(epics_ctx, modbus_pool);
 
-        #[cfg(all(feature = "epics", not(feature = "modbus")))]
+        #[cfg(all(feature = "epics-pvxs", not(feature = "modbus")))]
         let channel_ctx = ChannelContext::new(epics_ctx);
 
-        #[cfg(all(not(feature = "epics"), feature = "modbus"))]
+        #[cfg(all(not(feature = "epics-pvxs"), feature = "modbus"))]
         let channel_ctx = ChannelContext::new(modbus_pool);
 
-        #[cfg(all(not(feature = "epics"), not(feature = "modbus")))]
+        #[cfg(all(not(feature = "epics-pvxs"), not(feature = "modbus")))]
         let channel_ctx = ChannelContext::new();
 
         AppState {
-            #[cfg(feature = "epics")]
+            #[cfg(feature = "epics-pvxs")]
             pv_server: Arc::new(Mutex::new(None)),
             config,
             channel_ctx,
             #[cfg(feature = "modbus")]
             modbus_task: Arc::new(Mutex::new(None)),
-            #[cfg(feature = "epics")]
+            #[cfg(feature = "epics-pvxs")]
             epics_start_hook: None,
             #[cfg(feature = "modbus")]
             modbus_start_hook: None,

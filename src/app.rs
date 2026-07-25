@@ -22,10 +22,10 @@ use axum::{
 };
 use std::sync::{Arc, Mutex};
 
-#[cfg(feature = "epics")]
+#[cfg(feature = "epics-pvxs")]
 use crate::server_setup::setup_server_pvs;
 
-#[cfg(feature = "epics")]
+#[cfg(feature = "epics-pvxs")]
 pub type EpicsStartHook =
     Arc<dyn Fn(&AppState, &pvxs_sys::Server) -> Result<(), ProtocolControlError> + Send + Sync>;
 
@@ -51,10 +51,10 @@ pub struct AppState {
     /// Optional loopback session token for rendering.
     pub loopback_token: Option<String>,
     /// Running PVXS server, if the EPICS feature is enabled.
-    #[cfg(feature = "epics")]
+    #[cfg(feature = "epics-pvxs")]
     pub pv_server: Arc<Mutex<Option<pvxs_sys::Server>>>,
     /// Optional callback to attach app-specific EPICS simulator behavior after server start.
-    #[cfg(feature = "epics")]
+    #[cfg(feature = "epics-pvxs")]
     pub epics_start_hook: Option<EpicsStartHook>,
     #[cfg(feature = "modbus")]
     /// Handles for any background Modbus simulator/connection tasks.
@@ -67,7 +67,7 @@ pub struct AppState {
 impl AppState {
     /// Returns `true` when the EPICS PVA server is currently running.
     pub fn is_server_running(&self) -> bool {
-        #[cfg(feature = "epics")]
+        #[cfg(feature = "epics-pvxs")]
         {
             return self.pv_server.lock().unwrap().is_some();
         }
@@ -323,7 +323,7 @@ pub async fn stop_server(State(state): State<AppState>) -> Response {
     stop_server_impl(state).await
 }
 
-#[cfg(feature = "epics")]
+#[cfg(feature = "epics-pvxs")]
 async fn stop_server_impl(state: AppState) -> Response {
     match protocol_control::stop_epics_server(&state).await {
         Ok(()) => Html(
@@ -368,8 +368,7 @@ async fn stop_server_impl(state: AppState) -> Response {
         }
     }
 }
-
-#[cfg(not(feature = "epics"))]
+#[cfg(not(feature = "epics-pvxs"))]
 async fn stop_server_impl(_state: AppState) -> Response {
     StatusCode::NOT_IMPLEMENTED.into_response()
 }
@@ -528,7 +527,7 @@ pub async fn stream_screen_widgets(
         return Sse::new(stream).keep_alive(KeepAlive::default());
     };
 
-    #[cfg(feature = "epics")]
+    #[cfg(feature = "epics-pvxs")]
     if let Some(server) = state.pv_server.lock().unwrap().as_ref() {
         if let Err(e) = setup_server_pvs(server, &screen.widgets) {
             tracing::warn!("Failed to setup server PVs for screen {}: {}", screen_id, e);

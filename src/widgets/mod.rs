@@ -1,6 +1,6 @@
 use crate::channel::ChannelContext;
 #[cfg(feature = "modbus")]
-use crate::config::ModbusTCPConfig;
+use crate::config::ModbusTcpConfig;
 use crate::config::{ActionConfig, ProtocolConfig, ScreenConfig, WidgetConfig, WidgetType};
 use maud::{html, Markup, PreEscaped};
 use std::sync::Arc;
@@ -400,8 +400,8 @@ pub async fn write_channel(
                 }
             }
         }
-        #[cfg(feature = "epics")]
-        Some(ProtocolConfig::EpicsPva(e)) => {
+        #[cfg(feature = "epics-pvxs")]
+        Some(ProtocolConfig::EpicsPvxs(e)) => {
             write_channel_epics(
                 &config.id,
                 &e.pv_name,
@@ -419,7 +419,7 @@ pub async fn write_channel(
     }
 }
 
-#[cfg(feature = "epics")]
+#[cfg(feature = "epics-pvxs")]
 async fn write_channel_epics(
     widget_id: &str,
     pv_name: &str,
@@ -473,7 +473,7 @@ async fn write_channel_epics(
 #[cfg(feature = "modbus")]
 async fn write_channel_modbus(
     widget_id: &str,
-    m: ModbusTCPConfig,
+    m: ModbusTcpConfig,
     value_str: String,
     channel_ctx: Arc<ChannelContext>,
 ) -> Markup {

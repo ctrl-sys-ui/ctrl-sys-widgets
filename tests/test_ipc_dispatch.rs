@@ -15,7 +15,7 @@ mod test_ipc_dispatch {
             screens: Vec::new(),
         });
 
-        #[cfg(feature = "epics")]
+        #[cfg(feature = "epics-pvxs")]
         let epics_ctx = Arc::new(Mutex::new(
             mycela::pvxs_sys::Context::from_env().expect("pvxs context required"),
         ));
@@ -23,25 +23,25 @@ mod test_ipc_dispatch {
         #[cfg(feature = "modbus")]
         let modbus_pool = mycela::modbus_client::ModbusPool::new();
 
-        #[cfg(all(feature = "epics", feature = "modbus"))]
+        #[cfg(all(feature = "epics-pvxs", feature = "modbus"))]
         let channel_ctx = ChannelContext::new(epics_ctx, modbus_pool);
 
-        #[cfg(all(feature = "epics", not(feature = "modbus")))]
+        #[cfg(all(feature = "epics-pvxs", not(feature = "modbus")))]
         let channel_ctx = ChannelContext::new(epics_ctx);
 
-        #[cfg(all(not(feature = "epics"), feature = "modbus"))]
+        #[cfg(all(not(feature = "epics-pvxs"), feature = "modbus"))]
         let channel_ctx = ChannelContext::new(modbus_pool);
 
-        #[cfg(all(not(feature = "epics"), not(feature = "modbus")))]
+        #[cfg(all(not(feature = "epics-pvxs"), not(feature = "modbus")))]
         let channel_ctx = ChannelContext::new();
 
         AppState {
-            #[cfg(feature = "epics")]
+            #[cfg(feature = "epics-pvxs")]
             pv_server: Arc::new(Mutex::new(None)),
             config,
             channel_ctx,
             modbus_task: Arc::new(Mutex::new(None)),
-            #[cfg(feature = "epics")]
+            #[cfg(feature = "epics-pvxs")]
             epics_start_hook: None,
             #[cfg(feature = "modbus")]
             modbus_start_hook: None,
@@ -255,7 +255,7 @@ mod test_ipc_dispatch {
 
     // ── Feature: epics ────────────────────────────────────────────────────────
 
-    #[cfg(not(feature = "epics"))]
+    #[cfg(not(feature = "epics-pvxs"))]
     #[tokio::test]
     async fn test_epics_server_start_returns_cmd_unknown_when_feature_disabled() {
         let state = make_app_state();
@@ -271,7 +271,7 @@ mod test_ipc_dispatch {
         );
     }
 
-    #[cfg(not(feature = "epics"))]
+    #[cfg(not(feature = "epics-pvxs"))]
     #[tokio::test]
     async fn test_epics_server_stop_returns_cmd_unknown_when_feature_disabled() {
         let state = make_app_state();
@@ -287,7 +287,7 @@ mod test_ipc_dispatch {
         );
     }
 
-    #[cfg(not(feature = "epics"))]
+    #[cfg(not(feature = "epics-pvxs"))]
     #[tokio::test]
     async fn test_epics_server_status_returns_not_running_when_feature_disabled() {
         let state = make_app_state();
@@ -299,7 +299,7 @@ mod test_ipc_dispatch {
         assert_eq!(response.result.expect("result present")["running"], false);
     }
 
-    #[cfg(not(feature = "epics"))]
+    #[cfg(not(feature = "epics-pvxs"))]
     #[tokio::test]
     async fn test_epics_pv_read_returns_payload_invalid_for_missing_widget_without_epics() {
         let state = make_app_state();
@@ -315,7 +315,7 @@ mod test_ipc_dispatch {
         );
     }
 
-    #[cfg(feature = "epics")]
+    #[cfg(feature = "epics-pvxs")]
     #[tokio::test]
     async fn test_epics_server_status_returns_not_running_when_no_server_started() {
         let state = make_app_state();
@@ -327,7 +327,7 @@ mod test_ipc_dispatch {
         assert_eq!(response.result.expect("result present")["running"], false);
     }
 
-    #[cfg(feature = "epics")]
+    #[cfg(feature = "epics-pvxs")]
     #[tokio::test]
     async fn test_epics_server_stop_returns_state_conflict_when_not_running() {
         let state = make_app_state();

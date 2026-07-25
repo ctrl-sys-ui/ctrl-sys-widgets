@@ -23,7 +23,7 @@ pub fn epics_stream(
     let (tx, rx) = tokio::sync::mpsc::unbounded_channel::<ChannelEvent>();
 
     let is_multi_series = config
-        .epics_pva()
+        .epics_pvxs()
         .map(|e| {
             config.chart_type.as_deref().unwrap_or("line") == "line"
                 && e.pv_names.as_ref().map_or(false, |v| !v.is_empty())
@@ -32,7 +32,7 @@ pub fn epics_stream(
 
     if is_multi_series {
         let all_pvs = config
-            .epics_pva()
+            .epics_pvxs()
             .map(|e| e.series_pvs())
             .unwrap_or_default();
         tokio::task::spawn_blocking(move || run_multi_monitor(all_pvs, config, epics_ctx, tx));
@@ -51,10 +51,10 @@ fn run_single_monitor(
     tx: UnboundedSender<ChannelEvent>,
 ) {
     let pv_name = match config.protocol.as_ref() {
-        Some(ProtocolConfig::EpicsPva(e)) => e.pv_name.clone(),
+        Some(ProtocolConfig::EpicsPvxs(e)) => e.pv_name.clone(),
         _ => {
             let _ = tx.send(ChannelEvent::Error(
-                "epics_stream: not an epics-pva widget".into(),
+                "epics_stream: not an epics-pvxs widget".into(),
             ));
             return;
         }

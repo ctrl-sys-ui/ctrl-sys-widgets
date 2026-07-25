@@ -1,5 +1,5 @@
 mod test_widgets_container_style {
-    use mycela::config::{EpicsPvaConfig, ProtocolConfig, WidgetConfig, WidgetStyle, WidgetType};
+    use mycela::config::{EpicsPvxsConfig, ProtocolConfig, WidgetConfig, WidgetStyle, WidgetType};
     use mycela::widgets::{render_gauge, widget_container_style};
 
     fn make_widget(style: Option<WidgetStyle>) -> WidgetConfig {
@@ -7,7 +7,7 @@ mod test_widgets_container_style {
             id: "test1".into(),
             widget_type: WidgetType::Gauge,
             label: "Test".into(),
-            protocol: Some(ProtocolConfig::EpicsPva(EpicsPvaConfig {
+            protocol: Some(ProtocolConfig::EpicsPvxs(EpicsPvxsConfig {
                 pv_name: "demo:pv".into(),
                 server: None,
                 pv_names: None,

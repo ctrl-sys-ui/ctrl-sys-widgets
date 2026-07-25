@@ -143,7 +143,7 @@ Screen layout is defined in a JSON file (`examples/demo_config.json`):
       "label": "Motor X Position",
       "data_type": "double",
       "protocol": {
-        "type": "epics-pva",
+        "type": "epics-pvxs",
         "pv_name": "demo:double"
       },
       "metadata": {
