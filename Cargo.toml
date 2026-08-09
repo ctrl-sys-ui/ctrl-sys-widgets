@@ -19,12 +19,12 @@ path = "test_config_load.rs"
 [[example]]
 name = "demo_server"
 path = "examples/demo_server/main.rs"
-required-features = ["epics", "modbus"]
+required-features = ["epics-pvxs", "modbus", "ascii-tcp"]
 
 [[example]]
 name = "demo_desktop"
 path = "examples/demo_desktop/main.rs"
-required-features = ["epics", "modbus", "desktop"]
+required-features = ["epics-pvxs", "modbus", "ascii-tcp", "desktop"]
 
 [dependencies]
 # Web framework

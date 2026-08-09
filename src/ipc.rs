@@ -38,6 +38,12 @@ pub enum IpcCommand {
     ModbusSimStop,
     #[serde(rename = "modbus.sim.status.get", alias = "modbus_sim_status_get")]
     ModbusSimStatusGet,
+    #[serde(rename = "ascii_tcp.server.start", alias = "ascii_tcp_server_start")]
+    AsciiTcpServerStart,
+    #[serde(rename = "ascii_tcp.server.stop", alias = "ascii_tcp_server_stop")]
+    AsciiTcpServerStop,
+    #[serde(rename = "ascii_tcp.server.status.get", alias = "ascii_tcp_server_status_get")]
+    AsciiTcpServerStatusGet,
     #[serde(rename = "modbus.read", alias = "modbus_read")]
     ModbusRead,
     #[serde(rename = "modbus.write", alias = "modbus_write")]
@@ -62,6 +68,8 @@ impl IpcCommand {
                 | Self::EpicsPvWrite
                 | Self::ModbusSimStart
                 | Self::ModbusSimStop
+                | Self::AsciiTcpServerStart
+                | Self::AsciiTcpServerStop
                 | Self::ModbusWrite
         )
     }

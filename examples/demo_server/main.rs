@@ -1,7 +1,11 @@
+mod ascii_tcp_simulator;
 mod epics_simulator;
 mod modbus_simulator;
 
-use mycela::app::{AppState, stop_server, server_status, stop_modbus, modbus_status};
+use mycela::app::{
+    ascii_tcp_status, start_ascii_tcp, stop_ascii_tcp, AppState, modbus_status,
+    server_status, stop_modbus, stop_server,
+};
 use mycela::config::AppConfig;
 use mycela::protocol_control::{self, ProtocolControlError};
 use mycela::{modbus_client, server_setup::setup_server_pvs};
@@ -35,6 +39,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Modbus setup
     let (sim_h, listener_h) = modbus_simulator::start_modbus_simulator(5020);
     tracing::info!("Modbus TCP demo simulator started on port 5020");
+    let ascii_tcp_task = ascii_tcp_simulator::start_ascii_tcp_simulator(4000);
+    tracing::info!("ASCII TCP demo simulator started on port 4000");
     let channel_ctx = mycela::channel::ChannelContext::new(
         epics_ctx, modbus_client::ModbusPool::new(),
     );
@@ -55,6 +61,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             let (sim_h, listener_h) = modbus_simulator::start_modbus_simulator(5020);
             Ok(vec![sim_h, listener_h])
         })),
+        ascii_tcp_task: Arc::new(Mutex::new(Some(ascii_tcp_task))),
+        ascii_tcp_start_hook: Some(Arc::new(|_state| {
+            Ok(ascii_tcp_simulator::start_ascii_tcp_simulator(4000))
+        })),
     };
 
     let app = state.screen_routes()
@@ -64,6 +74,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .route("/api/modbus/start",  post(start_modbus))
         .route("/api/modbus/stop",   post(stop_modbus))
         .route("/api/modbus/status", get(modbus_status))
+        .route("/api/ascii-tcp/start", post(start_ascii_tcp))
+        .route("/api/ascii-tcp/stop", post(stop_ascii_tcp))
+        .route("/api/ascii-tcp/status", get(ascii_tcp_status))
         .nest_service("/static",     ServeDir::new("static"))
         .with_state(state)
         .layer(TraceLayer::new_for_http())

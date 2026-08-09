@@ -45,6 +45,10 @@ mod test_ipc_dispatch {
             epics_start_hook: None,
             #[cfg(feature = "modbus")]
             modbus_start_hook: None,
+            #[cfg(feature = "ascii-tcp")]
+            ascii_tcp_task: Arc::new(Mutex::new(None)),
+            #[cfg(feature = "ascii-tcp")]
+            ascii_tcp_start_hook: None,
             loopback_token: None,
         }
     }
@@ -251,6 +255,46 @@ mod test_ipc_dispatch {
             response.error.expect("error present").code,
             IpcErrorCode::PayloadInvalid
         );
+    }
+
+    // ── Feature: ASCII TCP ───────────────────────────────────────────────────
+
+    #[cfg(feature = "ascii-tcp")]
+    #[tokio::test]
+    async fn test_ascii_tcp_server_lifecycle() {
+        let mut state = make_app_state();
+        state.ascii_tcp_start_hook = Some(Arc::new(|_state| {
+            Ok(tokio::spawn(std::future::pending::<()>()))
+        }));
+
+        let status = dispatch_request(
+            &state,
+            make_request(IpcCommand::AsciiTcpServerStatusGet),
+            None,
+        )
+        .await;
+        assert_eq!(status.result.expect("status result")["running"], false);
+
+        let mut start = make_request(IpcCommand::AsciiTcpServerStart);
+        start.token = Some("tok".to_string());
+        let started = dispatch_request(&state, start, Some("tok")).await;
+        assert!(started.ok);
+        assert!(state.is_ascii_tcp_running());
+
+        let mut duplicate_start = make_request(IpcCommand::AsciiTcpServerStart);
+        duplicate_start.token = Some("tok".to_string());
+        let duplicate = dispatch_request(&state, duplicate_start, Some("tok")).await;
+        assert!(!duplicate.ok);
+        assert_eq!(
+            duplicate.error.expect("duplicate error").code,
+            IpcErrorCode::StateConflict
+        );
+
+        let mut stop = make_request(IpcCommand::AsciiTcpServerStop);
+        stop.token = Some("tok".to_string());
+        let stopped = dispatch_request(&state, stop, Some("tok")).await;
+        assert!(stopped.ok);
+        assert!(!state.is_ascii_tcp_running());
     }
 
     // ── Feature: epics ────────────────────────────────────────────────────────

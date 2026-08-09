@@ -161,3 +161,49 @@ pub fn stop_modbus_tasks(_state: &AppState) -> Result<(), ProtocolControlError> 
         "Modbus feature is not enabled".to_string(),
     ))
 }
+
+#[cfg(feature = "ascii-tcp")]
+pub fn start_ascii_tcp_runtime(state: &AppState) -> Result<(), ProtocolControlError> {
+    if state.is_ascii_tcp_running() {
+        return Err(ProtocolControlError::AlreadyRunning(
+            "ASCII TCP server already running",
+        ));
+    }
+
+    let Some(hook) = state.ascii_tcp_start_hook.as_ref() else {
+        return Err(ProtocolControlError::Operation(
+            "ASCII TCP start hook is not configured".to_string(),
+        ));
+    };
+
+    let task = hook(state)?;
+    *state.ascii_tcp_task.lock().unwrap() = Some(task);
+    Ok(())
+}
+
+#[cfg(not(feature = "ascii-tcp"))]
+pub fn start_ascii_tcp_runtime(_state: &AppState) -> Result<(), ProtocolControlError> {
+    Err(ProtocolControlError::Operation(
+        "ASCII TCP feature is not enabled".to_string(),
+    ))
+}
+
+#[cfg(feature = "ascii-tcp")]
+pub fn stop_ascii_tcp_runtime(state: &AppState) -> Result<(), ProtocolControlError> {
+    let task = state.ascii_tcp_task.lock().unwrap().take();
+    let Some(task) = task else {
+        return Err(ProtocolControlError::NotRunning(
+            "ASCII TCP server is not running",
+        ));
+    };
+
+    task.abort();
+    Ok(())
+}
+
+#[cfg(not(feature = "ascii-tcp"))]
+pub fn stop_ascii_tcp_runtime(_state: &AppState) -> Result<(), ProtocolControlError> {
+    Err(ProtocolControlError::Operation(
+        "ASCII TCP feature is not enabled".to_string(),
+    ))
+}

@@ -31,6 +31,9 @@
         if (normalizedMethod === 'post' && path === '/api/modbus/start') return 'modbus_sim_start';
         if (normalizedMethod === 'post' && path === '/api/modbus/stop') return 'modbus_sim_stop';
         if (normalizedMethod === 'get' && path === '/api/modbus/status') return 'modbus_sim_status_get';
+        if (normalizedMethod === 'post' && path === '/api/ascii-tcp/start') return 'ascii_tcp_server_start';
+        if (normalizedMethod === 'post' && path === '/api/ascii-tcp/stop') return 'ascii_tcp_server_stop';
+        if (normalizedMethod === 'get' && path === '/api/ascii-tcp/status') return 'ascii_tcp_server_status_get';
         return null;
     }
 
@@ -121,6 +124,9 @@
         if (path === '/api/modbus/status') {
             return '<div id="modbus-status" class="' + (result.running ? 'success' : 'warning') + ' screen-status-pill"><span>' + (result.running ? 'Modbus TCP Running' : 'Modbus TCP Stopped') + '</span></div>';
         }
+        if (path === '/api/ascii-tcp/status') {
+            return '<div id="ascii-tcp-status" class="' + (result.running ? 'success' : 'warning') + ' screen-status-pill"><span>' + (result.running ? 'ASCII TCP Running' : 'ASCII TCP Stopped') + '</span></div>';
+        }
         return '<div class="warning">Unknown status path</div>';
     }
 
@@ -132,6 +138,8 @@
         if (path === '/api/server/stop') return '<div class="warning">EPICS Server Stopped</div>';
         if (path === '/api/modbus/start') return '<div class="success">Modbus TCP Running</div>';
         if (path === '/api/modbus/stop') return '<div class="warning">Modbus TCP Stopped</div>';
+        if (path === '/api/ascii-tcp/start') return '<div class="success">ASCII TCP Running</div>';
+        if (path === '/api/ascii-tcp/stop') return '<div class="warning">ASCII TCP Stopped</div>';
         return '<div class="success">Request completed</div>';
     }
 
@@ -163,6 +171,12 @@
         }
         if (path.indexOf('/api/modbus/') === 0) {
             const status = document.getElementById('modbus-status');
+            if (status) {
+                runStatusRequest(status);
+            }
+        }
+        if (path.indexOf('/api/ascii-tcp/') === 0) {
+            const status = document.getElementById('ascii-tcp-status');
             if (status) {
                 runStatusRequest(status);
             }

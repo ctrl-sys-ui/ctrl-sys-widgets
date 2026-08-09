@@ -4,9 +4,9 @@ use crate::config::WidgetConfig;
 #[cfg(any(feature = "epics-pvxs", feature = "modbus"))]
 use crate::config::ProtocolConfig;
 use crate::ipc::{IpcCommand, IpcError, IpcErrorCode, IpcMessageKind, IpcRequest, IpcResponse};
-#[cfg(any(feature = "epics-pvxs", feature = "modbus"))]
+#[cfg(any(feature = "epics-pvxs", feature = "modbus", feature = "ascii-tcp"))]
 use crate::protocol_control::ProtocolControlError;
-#[cfg(any(feature = "epics-pvxs", feature = "modbus"))]
+#[cfg(any(feature = "epics-pvxs", feature = "modbus", feature = "ascii-tcp"))]
 use crate::protocol_control;
 use axum::http::StatusCode;
 use serde::Deserialize;
@@ -343,6 +343,50 @@ pub async fn dispatch_request(
                 ok_response(&request.id, json!({ "running": false }))
             }
         }
+        IpcCommand::AsciiTcpServerStart => {
+            #[cfg(feature = "ascii-tcp")]
+            {
+                match protocol_control::start_ascii_tcp_runtime(state) {
+                    Ok(()) => ok_response(&request.id, json!({ "running": true })),
+                    Err(error) => protocol_error_response(&request.id, error),
+                }
+            }
+            #[cfg(not(feature = "ascii-tcp"))]
+            {
+                error_response(
+                    &request.id,
+                    IpcErrorCode::CmdUnknown,
+                    "ASCII TCP feature is not enabled",
+                )
+            }
+        }
+        IpcCommand::AsciiTcpServerStop => {
+            #[cfg(feature = "ascii-tcp")]
+            {
+                match protocol_control::stop_ascii_tcp_runtime(state) {
+                    Ok(()) => ok_response(&request.id, json!({ "running": false })),
+                    Err(error) => protocol_error_response(&request.id, error),
+                }
+            }
+            #[cfg(not(feature = "ascii-tcp"))]
+            {
+                error_response(
+                    &request.id,
+                    IpcErrorCode::CmdUnknown,
+                    "ASCII TCP feature is not enabled",
+                )
+            }
+        }
+        IpcCommand::AsciiTcpServerStatusGet => {
+            #[cfg(feature = "ascii-tcp")]
+            {
+                ok_response(&request.id, json!({ "running": state.is_ascii_tcp_running() }))
+            }
+            #[cfg(not(feature = "ascii-tcp"))]
+            {
+                ok_response(&request.id, json!({ "running": false }))
+            }
+        }
         IpcCommand::ModbusRead => {
             let payload = match serde_json::from_value::<ChannelReadPayload>(request.payload) {
                 Ok(payload) => payload,
@@ -479,7 +523,7 @@ fn error_response(id: &str, code: IpcErrorCode, message: &str) -> IpcResponse {
     }
 }
 
-#[cfg(any(feature = "epics-pvxs", feature = "modbus"))]
+#[cfg(any(feature = "epics-pvxs", feature = "modbus", feature = "ascii-tcp"))]
 fn protocol_error_response(id: &str, error: ProtocolControlError) -> IpcResponse {
     match error {
         ProtocolControlError::AlreadyRunning(message)

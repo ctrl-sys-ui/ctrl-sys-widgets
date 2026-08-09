@@ -8,6 +8,7 @@
       "description": "Live EPICS PVXS widget showcase",
       "actions": [
         { "type": "navigate", "label": "Modbus Widgets >", "to": "modbus" },
+        { "type": "navigate", "label": "ASCII TCP Widgets >", "to": "ascii_tcp" },
         { "type": "window",   "label": "Open Modbus in new window", "to": "modbus" },
         { "type": "api", "label": "Start EPICS Sim",  "method": "post", "path": "/api/server/start" },
         { "type": "api", "label": "Stop EPICS Sim",   "method": "post", "path": "/api/server/stop" }
@@ -258,6 +259,7 @@
       "description": "Live Modbus TCP widget showcase — simulator on port 5020",
       "actions": [
         { "type": "navigate", "label": "< EPICS Widgets", "to": "epics" },
+        { "type": "navigate", "label": "ASCII TCP Widgets >", "to": "ascii_tcp" },
         { "type": "window",   "label": "Open EPICS in new window", "to": "epics" },
         { "type": "api", "label": "Start Modbus Sim", "method": "post", "path": "/api/modbus/start" },
         { "type": "api", "label": "Stop Modbus Sim",  "method": "post", "path": "/api/modbus/stop" }
@@ -511,6 +513,146 @@
                 "register": 2,
                 "register_type": "coil",
                 "min_poll_interval_ms": 500
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "ascii_tcp",
+      "title": "ASCII TCP Widgets",
+      "description": "ASCII line-protocol client and server showcase — simulator on port 4000",
+      "actions": [
+        { "type": "navigate", "label": "< EPICS Widgets", "to": "epics" },
+        { "type": "navigate", "label": "< Modbus Widgets", "to": "modbus" },
+        { "type": "api", "label": "Start ASCII TCP Sim", "method": "post", "path": "/api/ascii-tcp/start" },
+        { "type": "api", "label": "Stop ASCII TCP Sim", "method": "post", "path": "/api/ascii-tcp/stop" }
+      ],
+      "widgets": [
+        {
+          "id": "ascii_tcp_group",
+          "type": "group",
+          "label": "ASCII TCP — Client/Server Test",
+          "level": 1,
+          "description": "Widgets exchange CRLF-terminated READ and SET commands with the built-in simulator",
+          "children": [
+            {
+              "id": "ascii_tcp_temperature",
+              "type": "gauge",
+              "label": "Simulated Temperature",
+              "data_type": "double",
+              "description": "READ TEMPERATURE — continuously varying numeric response",
+              "style": { "width": "100%", "height": "auto" },
+              "protocol": {
+                "type": "ascii-tcp",
+                "host": "127.0.0.1",
+                "port": 4000,
+                "read_command": "READ TEMPERATURE",
+                "line_ending": "cr-lf",
+                "response_mode": "number",
+                "min_poll_interval_ms": 500
+              },
+              "metadata": {
+                "display": { "limit_low": 15.0, "limit_high": 35.0, "description": "Simulated process temperature", "precision": 2, "units": "°C" },
+                "control": { "limit_low": 15.0, "limit_high": 35.0, "min_step": 0.1 },
+                "alarm": { "low_alarm_limit": 17.0, "low_warning_limit": 19.0, "high_warning_limit": 31.0, "high_alarm_limit": 33.0, "low_alarm_severity": "MAJOR", "low_warning_severity": "MINOR", "high_warning_severity": "MINOR", "high_alarm_severity": "MAJOR", "hysteresis": 1 }
+              }
+            },
+            {
+              "id": "ascii_tcp_setpoint_slider",
+              "type": "slider",
+              "label": "Setpoint Slider",
+              "data_type": "double",
+              "description": "READ SETPOINT / SET SETPOINT {value} — numeric read and write",
+              "style": { "width": "100%", "height": "auto" },
+              "protocol": {
+                "type": "ascii-tcp",
+                "host": "127.0.0.1",
+                "port": 4000,
+                "read_command": "READ SETPOINT",
+                "write_command": "SET SETPOINT {value}",
+                "line_ending": "cr-lf",
+                "response_mode": "number",
+                "min_poll_interval_ms": 500
+              },
+              "metadata": {
+                "display": { "limit_low": 0.0, "limit_high": 100.0, "description": "Writable simulator setpoint", "precision": 1, "units": "%" },
+                "control": { "limit_low": 0.0, "limit_high": 100.0, "min_step": 0.5 }
+              }
+            },
+            {
+              "id": "ascii_tcp_setpoint_entry",
+              "type": "text_entry",
+              "label": "Setpoint Entry",
+              "data_type": "double",
+              "description": "Second client for the shared setpoint",
+              "style": { "width": "100%", "height": "auto" },
+              "protocol": {
+                "type": "ascii-tcp",
+                "host": "127.0.0.1",
+                "port": 4000,
+                "read_command": "READ SETPOINT",
+                "write_command": "SET SETPOINT {value}",
+                "line_ending": "cr-lf",
+                "response_mode": "number",
+                "min_poll_interval_ms": 500
+              },
+              "metadata": {
+                "display": { "limit_low": 0.0, "limit_high": 100.0, "description": "Writable simulator setpoint", "precision": 1, "units": "%" },
+                "control": { "limit_low": 0.0, "limit_high": 100.0, "min_step": 0.5 }
+              }
+            },
+            {
+              "id": "ascii_tcp_enabled_toggle",
+              "type": "toggle_button",
+              "label": "Output Enabled",
+              "data_type": "bool",
+              "description": "READ ENABLED / SET ENABLED {value} — boolean read and write",
+              "style": { "width": "100%", "height": "auto" },
+              "protocol": {
+                "type": "ascii-tcp",
+                "host": "127.0.0.1",
+                "port": 4000,
+                "read_command": "READ ENABLED",
+                "write_command": "SET ENABLED {value}",
+                "line_ending": "cr-lf",
+                "response_mode": "bool",
+                "min_poll_interval_ms": 500
+              }
+            },
+            {
+              "id": "ascii_tcp_enabled_led",
+              "type": "led",
+              "label": "Output Status",
+              "data_type": "bool",
+              "description": "Independent boolean client for the shared enabled state",
+              "style": { "width": "100%", "height": "auto" },
+              "protocol": {
+                "type": "ascii-tcp",
+                "host": "127.0.0.1",
+                "port": 4000,
+                "read_command": "READ ENABLED",
+                "line_ending": "cr-lf",
+                "response_mode": "bool",
+                "min_poll_interval_ms": 500
+              }
+            },
+            {
+              "id": "ascii_tcp_message",
+              "type": "text_update",
+              "label": "Server Message",
+              "data_type": "string",
+              "description": "READ MESSAGE — raw text response",
+              "style": { "width": "100%", "height": "auto" },
+              "protocol": {
+                "type": "ascii-tcp",
+                "host": "127.0.0.1",
+                "port": 4000,
+                "read_command": "READ MESSAGE",
+                "line_ending": "cr-lf",
+                "response_mode": "text",
+                "min_poll_interval_ms": 1000
               }
             }
           ]

@@ -54,6 +54,10 @@ mod test_transport_parity {
             epics_start_hook: None,
             #[cfg(feature = "modbus")]
             modbus_start_hook: None,
+            #[cfg(feature = "ascii-tcp")]
+            ascii_tcp_task: Arc::new(Mutex::new(None)),
+            #[cfg(feature = "ascii-tcp")]
+            ascii_tcp_start_hook: None,
             loopback_token: None,
         }
     }

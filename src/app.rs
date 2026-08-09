@@ -20,7 +20,7 @@ use axum::{
     routing::{get, post},
     Router,
 };
-#[cfg(feature = "epics-pvxs")]
+#[cfg(any(feature = "epics-pvxs", feature = "ascii-tcp"))]
 use std::sync::Mutex;
 use std::sync::Arc;
 
@@ -36,6 +36,11 @@ pub type ModbusStartHook = Arc<
     dyn Fn(&AppState) -> Result<Vec<tokio::task::JoinHandle<()>>, ProtocolControlError>
         + Send
         + Sync,
+>;
+
+#[cfg(feature = "ascii-tcp")]
+pub type AsciiTcpStartHook = Arc<
+    dyn Fn(&AppState) -> Result<tokio::task::JoinHandle<()>, ProtocolControlError> + Send + Sync,
 >;
 
 // --- Application state -------------------------------------------------------
@@ -64,6 +69,12 @@ pub struct AppState {
     /// Optional callback to construct app-specific Modbus tasks when starting Modbus runtime.
     #[cfg(feature = "modbus")]
     pub modbus_start_hook: Option<ModbusStartHook>,
+    /// Handle for the background ASCII TCP server task.
+    #[cfg(feature = "ascii-tcp")]
+    pub ascii_tcp_task: Arc<Mutex<Option<tokio::task::JoinHandle<()>>>>,
+    /// Optional callback to construct the app-specific ASCII TCP server task.
+    #[cfg(feature = "ascii-tcp")]
+    pub ascii_tcp_start_hook: Option<AsciiTcpStartHook>,
 }
 
 impl AppState {
@@ -100,6 +111,22 @@ impl AppState {
                 .unwrap()
                 .as_ref()
                 .map(|v| v.iter().any(|h| !h.is_finished()))
+                .unwrap_or(false);
+        }
+        #[allow(unreachable_code)]
+        false
+    }
+
+    /// Returns `true` when the ASCII TCP server task is still alive.
+    pub fn is_ascii_tcp_running(&self) -> bool {
+        #[cfg(feature = "ascii-tcp")]
+        {
+            return self
+                .ascii_tcp_task
+                .lock()
+                .unwrap()
+                .as_ref()
+                .map(|handle| !handle.is_finished())
                 .unwrap_or(false);
         }
         #[allow(unreachable_code)]
@@ -426,6 +453,76 @@ pub async fn modbus_status(State(state): State<AppState>) -> Html<String> {
         maud::html! {
             div id="modbus-status" class=(if is_running { "success" } else { "warning" }) {
                 span { @if is_running { "Modbus TCP Running" } @else { "Modbus TCP Stopped" } }
+            }
+        }
+        .into_string(),
+    )
+}
+
+// --- ASCII TCP control -------------------------------------------------------
+
+pub async fn start_ascii_tcp(State(state): State<AppState>) -> Response {
+    tracing::info!("POST /api/ascii-tcp/start");
+    match protocol_control::start_ascii_tcp_runtime(&state) {
+        Ok(()) => Html(
+            maud::html! {
+                div id="ascii-tcp-status" class="success" hx-swap-oob="true" {
+                    span { "ASCII TCP Running" }
+                }
+            }
+            .into_string(),
+        )
+        .into_response(),
+        Err(ProtocolControlError::AlreadyRunning(_)) => (
+            StatusCode::BAD_REQUEST,
+            Html(maud::html! { div class="warning" { "ASCII TCP server is already running" } }.into_string()),
+        )
+            .into_response(),
+        Err(error) => {
+            tracing::error!("Failed to start ASCII TCP server: {}", error);
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Html(maud::html! { div class="error" { "Error: " (error.to_string()) } }.into_string()),
+            )
+                .into_response()
+        }
+    }
+}
+
+pub async fn stop_ascii_tcp(State(state): State<AppState>) -> Response {
+    tracing::info!("POST /api/ascii-tcp/stop");
+    match protocol_control::stop_ascii_tcp_runtime(&state) {
+        Ok(()) => Html(
+            maud::html! {
+                div id="ascii-tcp-status" class="warning" hx-swap-oob="true" {
+                    span { "ASCII TCP Stopped" }
+                }
+            }
+            .into_string(),
+        )
+        .into_response(),
+        Err(ProtocolControlError::NotRunning(_)) => (
+            StatusCode::BAD_REQUEST,
+            Html(maud::html! { div class="warning" { "ASCII TCP server is not running" } }.into_string()),
+        )
+            .into_response(),
+        Err(error) => {
+            tracing::error!("Failed to stop ASCII TCP server: {}", error);
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Html(maud::html! { div class="error" { "Error: " (error.to_string()) } }.into_string()),
+            )
+                .into_response()
+        }
+    }
+}
+
+pub async fn ascii_tcp_status(State(state): State<AppState>) -> Html<String> {
+    let is_running = state.is_ascii_tcp_running();
+    Html(
+        maud::html! {
+            div id="ascii-tcp-status" class=(if is_running { "success" } else { "warning" }) {
+                span { @if is_running { "ASCII TCP Running" } @else { "ASCII TCP Stopped" } }
             }
         }
         .into_string(),

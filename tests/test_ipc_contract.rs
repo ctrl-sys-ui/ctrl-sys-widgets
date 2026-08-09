@@ -25,12 +25,19 @@ mod test_ipc_contract {
         let json = serde_json::to_string(&IpcCommand::AppVersionGet)
             .expect("command should serialize");
         assert_eq!(json, "\"app.version.get\"");
+
+        let ascii_json = serde_json::to_string(&IpcCommand::AsciiTcpServerStatusGet)
+            .expect("ASCII TCP status command should serialize");
+        assert_eq!(ascii_json, "\"ascii_tcp.server.status.get\"");
     }
 
     #[test]
     fn test_mutating_command_detection_is_correct() {
         assert!(IpcCommand::EpicsPvWrite.is_mutating());
         assert!(IpcCommand::ModbusWrite.is_mutating());
+        assert!(IpcCommand::AsciiTcpServerStart.is_mutating());
+        assert!(IpcCommand::AsciiTcpServerStop.is_mutating());
+        assert!(!IpcCommand::AsciiTcpServerStatusGet.is_mutating());
         assert!(!IpcCommand::EpicsPvRead.is_mutating());
         assert!(!IpcCommand::ModbusRead.is_mutating());
         assert!(!IpcCommand::EpicsPvSubscribe.is_mutating());

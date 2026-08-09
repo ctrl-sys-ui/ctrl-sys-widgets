@@ -201,6 +201,16 @@ pub fn render_screen_with_options(
             })
         })
         .unwrap_or(false);
+    let has_ascii_tcp_controls = config
+        .actions
+        .as_ref()
+        .map(|actions| {
+            actions.iter().any(|action| {
+                matches!(action,
+            ActionConfig::Api { path, .. } if path.starts_with("/api/ascii-tcp/"))
+            })
+        })
+        .unwrap_or(false);
 
     html! {
         (maud::DOCTYPE)
@@ -238,7 +248,7 @@ pub fn render_screen_with_options(
                             a href="/" class="back-link" { "← Home" }
                         }
                     }
-                    @if has_server_controls || has_modbus_controls {
+                    @if has_server_controls || has_modbus_controls || has_ascii_tcp_controls {
                         div class="screen-status-strip" {
                             @if has_server_controls {
                                 div id="server-status" class="warning screen-status-pill"
@@ -252,6 +262,13 @@ pub fn render_screen_with_options(
                                     data-myce-status-path="/api/modbus/status"
                                     data-myce-method="get" {
                                     span { "Modbus Status" }
+                                }
+                            }
+                            @if has_ascii_tcp_controls {
+                                div id="ascii-tcp-status" class="warning screen-status-pill"
+                                    data-myce-status-path="/api/ascii-tcp/status"
+                                    data-myce-method="get" {
+                                    span { "ASCII TCP Status" }
                                 }
                             }
                         }
