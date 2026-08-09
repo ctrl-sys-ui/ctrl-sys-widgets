@@ -25,14 +25,14 @@ impl std::fmt::Display for ProtocolControlError {
 impl std::error::Error for ProtocolControlError {}
 
 #[cfg(feature = "epics-pvxs")]
-pub async fn start_epics_server(state: &AppState) -> Result<pvxs_sys::Server, ProtocolControlError> {
+pub async fn start_epics_server(state: &AppState) -> Result<pvxs::Server, ProtocolControlError> {
     if state.is_server_running() {
         return Err(ProtocolControlError::AlreadyRunning("EPICS server already running"));
     }
 
     let config = state.config.clone();
-    let result = tokio::task::spawn_blocking(move || -> pvxs_sys::Result<pvxs_sys::Server> {
-        let server = pvxs_sys::Server::start_from_env()?;
+    let result = tokio::task::spawn_blocking(move || -> pvxs::Result<pvxs::Server> {
+        let server = pvxs::Server::start_from_env()?;
         for screen in &config.screens {
             setup_server_pvs(&server, &screen.widgets)?;
         }
@@ -63,7 +63,7 @@ pub async fn start_epics_runtime(state: &AppState) -> Result<(), ProtocolControl
 }
 
 #[cfg(feature = "epics-pvxs")]
-pub fn set_epics_server(state: &AppState, server: pvxs_sys::Server) {
+pub fn set_epics_server(state: &AppState, server: pvxs::Server) {
     *state.pv_server.lock().unwrap() = Some(server);
 }
 

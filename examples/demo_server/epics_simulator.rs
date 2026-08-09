@@ -37,7 +37,7 @@ enum SimPv {
 /// to the PVXS server via `ServerHandle`.  Only call this when the embedded
 /// demo server is active.
 pub fn start_demo_simulator(
-    handle: pvxs_sys::ServerHandle,
+    handle: pvxs::ServerHandle,
     widgets: &[WidgetConfig],
 ) {
     let sim_pvs = build_sim_pvs(widgets);
@@ -148,7 +148,7 @@ fn display_limits(w: &WidgetConfig) -> (f64, f64) {
 }
 
 async fn run_simulation_loop(
-    handle: pvxs_sys::ServerHandle,
+    handle: pvxs::ServerHandle,
     mut sim_pvs: Vec<SimPv>,
 ) {
     let mut interval = tokio::time::interval(Duration::from_millis(500));

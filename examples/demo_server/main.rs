@@ -12,7 +12,7 @@ use mycela::{modbus_client, server_setup::setup_server_pvs};
 use mycela::axum::{routing::{get, post}, extract::State, response::{Html, IntoResponse, Response}, http::StatusCode};
 use mycela::maud;
 use mycela::tower_http::{services::ServeDir, trace::TraceLayer, cors::CorsLayer};
-use mycela::pvxs_sys;
+use mycela::pvxs;
 use std::sync::{Arc, Mutex};
 
 // --- Entry point -------------------------------------------------------------
@@ -27,14 +27,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     ).expect("Failed to load demo_app.json");
 
     // EPICS / PVXS setup
-    let server = pvxs_sys::Server::start_from_env()?;
+    let server = pvxs::Server::start_from_env()?;
     for screen in &config.screens {
         setup_server_pvs(&server, &screen.widgets)?;
     }
     for screen in &config.screens {
         epics_simulator::start_demo_simulator(server.handle(), &screen.widgets);
     }
-    let epics_ctx = Arc::new(Mutex::new(pvxs_sys::Context::from_env()?));
+    let epics_ctx = Arc::new(Mutex::new(pvxs::Context::from_env()?));
 
     // Modbus setup
     let (sim_h, listener_h) = modbus_simulator::start_modbus_simulator(5020);

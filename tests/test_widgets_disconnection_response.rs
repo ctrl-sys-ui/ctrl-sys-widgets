@@ -107,7 +107,7 @@ mod test_widgets_disconnection_response {
         {
             use std::sync::Mutex;
             let epics_ctx = Arc::new(Mutex::new(
-                pvxs_sys::Context::from_env().expect("pvxs context required"),
+                pvxs::Context::from_env().expect("pvxs context required"),
             ));
             ChannelContext::new(epics_ctx, pool)
         }

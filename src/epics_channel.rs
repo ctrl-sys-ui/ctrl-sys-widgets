@@ -1,7 +1,7 @@
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use pvxs_sys::{Context, MonitorEvent, Value};
+use pvxs::{Context, MonitorEvent, Value};
 use tokio::sync::mpsc::UnboundedSender;
 use tokio_stream::wrappers::UnboundedReceiverStream;
 
@@ -10,7 +10,7 @@ use crate::config::{ProtocolConfig, WidgetConfig};
 
 // ─── Public entry point ───────────────────────────────────────────────────────
 
-/// Create an async stream of `ChannelEvent`s backed by a pvxs-sys EPICS monitor.
+/// Create an async stream of `ChannelEvent`s backed by a pvxs EPICS monitor.
 ///
 /// * For regular (single-PV) widgets: spawns one blocking thread that loops on
 ///   `monitor.pop()` and sends events through a channel.
@@ -228,7 +228,7 @@ fn run_multi_monitor(
 
 // ─── Value mapping ────────────────────────────────────────────────────────────
 
-/// Convert a `pvxs_sys::Value` into a protocol-neutral `ChannelValue`.
+/// Convert a `pvxs::Value` into a protocol-neutral `ChannelValue`.
 pub fn channel_value_from_epics(raw: &Value, config: &WidgetConfig) -> ChannelValue {
     // Widget-level metadata as fallback when EPICS has not yet delivered server metadata.
     let meta_display = config.metadata.as_ref().and_then(|m| m.display.as_ref());

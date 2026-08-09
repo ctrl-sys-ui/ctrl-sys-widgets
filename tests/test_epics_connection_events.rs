@@ -50,7 +50,7 @@ mod test_epics_connection_events {
     /// emits an `Error` event immediately and exits — no IOC connection needed.
     #[tokio::test]
     async fn epics_stream_emits_error_for_widget_without_epics_protocol() {
-        let ctx    = Arc::new(Mutex::new(pvxs_sys::Context::from_env().unwrap()));
+        let ctx    = Arc::new(Mutex::new(pvxs::Context::from_env().unwrap()));
         let config = no_protocol_widget();
         let mut stream = Box::pin(epics_stream(config, ctx));
 
@@ -78,19 +78,19 @@ mod test_epics_connection_events {
     #[tokio::test]
     #[ignore = "starts a local PVXS server; may be slow — run with --ignored"]
     async fn epics_stream_emits_connected_when_pv_is_served_locally() {
-        let server = tokio::task::spawn_blocking(|| pvxs_sys::Server::start_from_env())
+        let server = tokio::task::spawn_blocking(|| pvxs::Server::start_from_env())
             .await
             .unwrap()
             .expect("could not start local PVXS server");
 
         server
-            .create_pv_double("test:mycela:connected", 42.0, pvxs_sys::NTScalarMetadataBuilder::new())
+            .create_pv_double("test:mycela:connected", 42.0, pvxs::NTScalarMetadataBuilder::new())
             .expect("could not create test PV");
 
         // Allow the server to fully advertise the PV before the client connects.
         tokio::time::sleep(Duration::from_millis(250)).await;
 
-        let ctx    = Arc::new(Mutex::new(pvxs_sys::Context::from_env().unwrap()));
+        let ctx    = Arc::new(Mutex::new(pvxs::Context::from_env().unwrap()));
         let config = epics_widget("test:mycela:connected");
         let mut stream = Box::pin(epics_stream(config, ctx));
 
@@ -108,18 +108,18 @@ mod test_epics_connection_events {
     #[tokio::test]
     #[ignore = "starts a local PVXS server and waits for PVA disconnect detection; may be slow — run with --ignored"]
     async fn epics_stream_emits_disconnected_after_server_stops() {
-        let server = tokio::task::spawn_blocking(|| pvxs_sys::Server::start_from_env())
+        let server = tokio::task::spawn_blocking(|| pvxs::Server::start_from_env())
             .await
             .unwrap()
             .expect("could not start local PVXS server");
 
         server
-            .create_pv_double("test:mycela:disconnect", 1.0, pvxs_sys::NTScalarMetadataBuilder::new())
+            .create_pv_double("test:mycela:disconnect", 1.0, pvxs::NTScalarMetadataBuilder::new())
             .expect("could not create test PV");
 
         tokio::time::sleep(Duration::from_millis(250)).await;
 
-        let ctx    = Arc::new(Mutex::new(pvxs_sys::Context::from_env().unwrap()));
+        let ctx    = Arc::new(Mutex::new(pvxs::Context::from_env().unwrap()));
         let config = epics_widget("test:mycela:disconnect");
         let mut stream = Box::pin(epics_stream(config, ctx));
 

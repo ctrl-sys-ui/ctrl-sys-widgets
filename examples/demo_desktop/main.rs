@@ -22,7 +22,7 @@ use mycela::config::{AppConfig, ScreenConfig, WidgetConfig};
 use mycela::desktop::{run_desktop, DesktopRuntimeHooks};
 use mycela::ipc::{IpcEvent, IpcMessageKind};
 use mycela::protocol_control::{self, ProtocolControlError};
-use mycela::pvxs_sys;
+use mycela::pvxs;
 use mycela::server_setup::setup_server_pvs;
 use mycela::{modbus_client, widgets};
 use std::borrow::Cow;
@@ -181,7 +181,7 @@ fn build_app_state(config: AppConfig, loopback_token: Option<String>) -> AppStat
             tracing::info!("No server PVs configured, running in client-only mode");
             Arc::new(Mutex::new(None))
         } else {
-            let server = pvxs_sys::Server::start_from_env().expect("PVXS server start");
+            let server = pvxs::Server::start_from_env().expect("PVXS server start");
             for screen in &config.screens {
                 setup_server_pvs(&server, &screen.widgets).expect("PVXS setup");
             }
@@ -192,7 +192,7 @@ fn build_app_state(config: AppConfig, loopback_token: Option<String>) -> AppStat
     };
 
     let epics_ctx = Arc::new(Mutex::new(
-        pvxs_sys::Context::from_env().expect("PVXS context"),
+        pvxs::Context::from_env().expect("PVXS context"),
     ));
     let (sim_h, listener_h) = modbus_simulator::start_modbus_simulator(5020);
     tracing::info!("Modbus TCP simulator started on port 5020");

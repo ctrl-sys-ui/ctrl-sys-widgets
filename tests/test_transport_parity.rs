@@ -25,7 +25,7 @@ mod test_transport_parity {
 
         #[cfg(feature = "epics-pvxs")]
         let epics_ctx = Arc::new(Mutex::new(
-            mycela::pvxs_sys::Context::from_env().expect("pvxs context required"),
+            mycela::pvxs::Context::from_env().expect("pvxs context required"),
         ));
 
         #[cfg(feature = "modbus")]

@@ -17,7 +17,7 @@ Mycela is a Rust framework for distributed control system UIs, combining an Axum
 ### Prerequisites
 
 - Rust 1.75+ (`rustup update`)
-- For EPICS: `pvxs-sys`
+- For EPICS: local `pvxs` crate at `../pvxs-rs`
 - For Modbus: `tokio-modbus`
 - For ASCII TCP: sibling crate `ascii-tcp`
 - For ASCII SERIAL: sibling crate `ascii-serial`
@@ -224,7 +224,7 @@ Screen layout is defined in a JSON file (`examples/demo_config.json`):
 | Maud (HTML templating) | 0.27.0 |
 | Tokio | 1.52 |
 | tokio-modbus | 0.17 |
-| pvxs-sys | 0.1.2 |
+| pvxs | local path (`../pvxs-rs`) |
 | DashMap | 6 |
 | plotters (SVG) | 0.3 |
 | tracing-appender | 0.2 |

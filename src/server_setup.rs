@@ -3,9 +3,9 @@ use crate::widgets::collect_data_widgets;
 use std::collections::HashSet;
 
 pub fn setup_server_pvs(
-    server: &pvxs_sys::Server,
+    server: &pvxs::Server,
     widgets: &[WidgetConfig],
-) -> pvxs_sys::Result<()> {
+) -> pvxs::Result<()> {
     let data_widgets = collect_data_widgets(widgets);
     let mut created: HashSet<String> = HashSet::new();
 
@@ -45,11 +45,11 @@ pub fn setup_server_pvs(
 }
 
 fn create_widget_pv(
-    server: &pvxs_sys::Server,
+    server: &pvxs::Server,
     widget: &WidgetConfig,
     pv_name: &str,
     server_config: &ServerConfig,
-) -> pvxs_sys::Result<()> {
+) -> pvxs::Result<()> {
     match widget.data_type.as_deref() {
         Some("enum") => {
             tracing::info!("Creating ENUM PV: {}", pv_name);
@@ -101,38 +101,38 @@ fn create_widget_pv(
     Ok(())
 }
 
-fn build_enum_metadata(server_config: &ServerConfig) -> pvxs_sys::NTEnumMetadataBuilder {
+fn build_enum_metadata(server_config: &ServerConfig) -> pvxs::NTEnumMetadataBuilder {
     let severity = server_config
         .alarm_severity
         .as_ref()
         .map(|s| parse_alarm_severity(s))
-        .unwrap_or(pvxs_sys::AlarmSeverity::NoAlarm);
+        .unwrap_or(pvxs::AlarmSeverity::NoAlarm);
     let status = server_config
         .alarm_status
         .as_ref()
         .map(|s| parse_alarm_status(s))
-        .unwrap_or(pvxs_sys::AlarmStatus::NoAlarm);
+        .unwrap_or(pvxs::AlarmStatus::NoAlarm);
 
-    pvxs_sys::NTEnumMetadataBuilder::new().alarm(
+    pvxs::NTEnumMetadataBuilder::new().alarm(
         severity as i32,
         status as i32,
         server_config.alarm_message.as_deref().unwrap_or(""),
     )
 }
 
-fn build_pv_metadata(server_config: &ServerConfig) -> pvxs_sys::NTScalarMetadataBuilder {
+fn build_pv_metadata(server_config: &ServerConfig) -> pvxs::NTScalarMetadataBuilder {
     let severity = server_config
         .alarm_severity
         .as_ref()
         .map(|s| parse_alarm_severity(s))
-        .unwrap_or(pvxs_sys::AlarmSeverity::NoAlarm);
+        .unwrap_or(pvxs::AlarmSeverity::NoAlarm);
     let status = server_config
         .alarm_status
         .as_ref()
         .map(|s| parse_alarm_status(s))
-        .unwrap_or(pvxs_sys::AlarmStatus::NoAlarm);
+        .unwrap_or(pvxs::AlarmStatus::NoAlarm);
 
-    let mut builder = pvxs_sys::NTScalarMetadataBuilder::new().alarm(
+    let mut builder = pvxs::NTScalarMetadataBuilder::new().alarm(
         severity,
         status,
         server_config.alarm_message.as_deref().unwrap_or(""),
@@ -140,9 +140,9 @@ fn build_pv_metadata(server_config: &ServerConfig) -> pvxs_sys::NTScalarMetadata
 
     if let Some(metadata) = &server_config.metadata {
         if let Some(display) = &metadata.display {
-            builder = builder.display(pvxs_sys::DisplayMetadata {
+            builder = builder.display(pvxs::DisplayMetadata {
                 // Round before truncating: preserves 0.5 → 1 rather than 0.
-                // A future pvxs-sys update may expose f64 limits directly.
+                // A future pvxs update may expose f64 limits directly.
                 limit_low: display.limit_low.round() as i64,
                 limit_high: display.limit_high.round() as i64,
                 description: display.description.clone(),
@@ -151,14 +151,14 @@ fn build_pv_metadata(server_config: &ServerConfig) -> pvxs_sys::NTScalarMetadata
             });
         }
         if let Some(control) = &metadata.control {
-            builder = builder.control(pvxs_sys::ControlMetadata {
+            builder = builder.control(pvxs::ControlMetadata {
                 limit_low: control.limit_low,
                 limit_high: control.limit_high,
                 min_step: control.min_step,
             });
         }
         if let Some(alarm) = &metadata.alarm {
-            builder = builder.alarm_metadata(pvxs_sys::AlarmMetadata {
+            builder = builder.alarm_metadata(pvxs::AlarmMetadata {
                 active: true,
                 low_alarm_limit: alarm.low_alarm_limit,
                 low_warning_limit: alarm.low_warning_limit,
@@ -176,31 +176,31 @@ fn build_pv_metadata(server_config: &ServerConfig) -> pvxs_sys::NTScalarMetadata
     builder
 }
 
-fn parse_alarm_severity(severity: &str) -> pvxs_sys::AlarmSeverity {
+fn parse_alarm_severity(severity: &str) -> pvxs::AlarmSeverity {
     match severity.to_uppercase().as_str() {
-        "NONE" => pvxs_sys::AlarmSeverity::NoAlarm,
-        "MINOR" => pvxs_sys::AlarmSeverity::Minor,
-        "MAJOR" => pvxs_sys::AlarmSeverity::Major,
-        "INVALID" => pvxs_sys::AlarmSeverity::Invalid,
+        "NONE" => pvxs::AlarmSeverity::NoAlarm,
+        "MINOR" => pvxs::AlarmSeverity::Minor,
+        "MAJOR" => pvxs::AlarmSeverity::Major,
+        "INVALID" => pvxs::AlarmSeverity::Invalid,
         _ => {
             tracing::warn!("Unknown alarm severity '{}', using NoAlarm", severity);
-            pvxs_sys::AlarmSeverity::NoAlarm
+            pvxs::AlarmSeverity::NoAlarm
         }
     }
 }
 
-fn parse_alarm_status(status: &str) -> pvxs_sys::AlarmStatus {
+fn parse_alarm_status(status: &str) -> pvxs::AlarmStatus {
     match status.to_uppercase().as_str() {
-        "NOALARM" | "NO_ALARM" | "NONE" => pvxs_sys::AlarmStatus::NoAlarm,
-        "DEVICE" => pvxs_sys::AlarmStatus::DeviceStatus,
-        "DRIVER" => pvxs_sys::AlarmStatus::DriverStatus,
-        "RECORD" => pvxs_sys::AlarmStatus::RecordStatus,
-        "DB" => pvxs_sys::AlarmStatus::DbStatus,
-        "CONFIG" => pvxs_sys::AlarmStatus::ConfigStatus,
-        "CLIENT" => pvxs_sys::AlarmStatus::ClientStatus,
+        "NOALARM" | "NO_ALARM" | "NONE" => pvxs::AlarmStatus::NoAlarm,
+        "DEVICE" => pvxs::AlarmStatus::DeviceStatus,
+        "DRIVER" => pvxs::AlarmStatus::DriverStatus,
+        "RECORD" => pvxs::AlarmStatus::RecordStatus,
+        "DB" => pvxs::AlarmStatus::DbStatus,
+        "CONFIG" => pvxs::AlarmStatus::ConfigStatus,
+        "CLIENT" => pvxs::AlarmStatus::ClientStatus,
         _ => {
             tracing::warn!("Unknown alarm status '{}', using DeviceStatus", status);
-            pvxs_sys::AlarmStatus::DeviceStatus
+            pvxs::AlarmStatus::DeviceStatus
         }
     }
 }

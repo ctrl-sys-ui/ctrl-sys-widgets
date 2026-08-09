@@ -39,7 +39,7 @@ pub use tower_http;
 pub use tokio_stream;
 pub use async_stream;
 #[cfg(feature = "epics-pvxs")]
-pub use pvxs_sys;
+pub use pvxs;
 #[cfg(feature = "desktop")]
 pub use winit;
 #[cfg(feature = "desktop")]

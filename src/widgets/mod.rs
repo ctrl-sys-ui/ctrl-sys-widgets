@@ -454,28 +454,28 @@ async fn write_channel_epics(
     pv_name: &str,
     data_type: &Option<String>,
     value_str: String,
-    write_ctx: Arc<std::sync::Mutex<pvxs_sys::Context>>,
+    write_ctx: Arc<std::sync::Mutex<pvxs::Context>>,
 ) -> Markup {
     let pv = pv_name.to_string();
     let dt = data_type.clone();
-    let result = tokio::task::spawn_blocking(move || -> pvxs_sys::Result<()> {
+    let result = tokio::task::spawn_blocking(move || -> pvxs::Result<()> {
         let mut ctx = write_ctx.lock().unwrap();
         match dt.as_deref() {
             Some("int32") | Some("int") | Some("integer") | Some("bool") => {
                 let v: i32 = value_str.trim().parse().map_err(|_| {
-                    pvxs_sys::PvxsError::new(format!("invalid int32: '{}'", value_str.trim()))
+                    pvxs::PvxsError::new(format!("invalid int32: '{}'", value_str.trim()))
                 })?;
                 ctx.put_int32(&pv, v, 5.0)
             }
             Some("enum") => {
                 let v: i16 = value_str.trim().parse().map_err(|_| {
-                    pvxs_sys::PvxsError::new(format!("invalid enum index: '{}'", value_str.trim()))
+                    pvxs::PvxsError::new(format!("invalid enum index: '{}'", value_str.trim()))
                 })?;
                 ctx.put_enum(&pv, v, 5.0)
             }
             Some("double") | Some("float") | Some("f64") | Some("f32") => {
                 let v: f64 = value_str.trim().parse().map_err(|_| {
-                    pvxs_sys::PvxsError::new(format!("invalid float: '{}'", value_str.trim()))
+                    pvxs::PvxsError::new(format!("invalid float: '{}'", value_str.trim()))
                 })?;
                 ctx.put_double(&pv, v, 5.0)
             }

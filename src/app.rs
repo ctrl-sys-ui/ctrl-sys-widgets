@@ -29,7 +29,7 @@ use crate::server_setup::setup_server_pvs;
 
 #[cfg(feature = "epics-pvxs")]
 pub type EpicsStartHook =
-    Arc<dyn Fn(&AppState, &pvxs_sys::Server) -> Result<(), ProtocolControlError> + Send + Sync>;
+    Arc<dyn Fn(&AppState, &pvxs::Server) -> Result<(), ProtocolControlError> + Send + Sync>;
 
 #[cfg(feature = "modbus")]
 pub type ModbusStartHook = Arc<
@@ -59,7 +59,7 @@ pub struct AppState {
     pub loopback_token: Option<String>,
     /// Running PVXS server, if the EPICS feature is enabled.
     #[cfg(feature = "epics-pvxs")]
-    pub pv_server: Arc<Mutex<Option<pvxs_sys::Server>>>,
+    pub pv_server: Arc<Mutex<Option<pvxs::Server>>>,
     /// Optional callback to attach app-specific EPICS simulator behavior after server start.
     #[cfg(feature = "epics-pvxs")]
     pub epics_start_hook: Option<EpicsStartHook>,

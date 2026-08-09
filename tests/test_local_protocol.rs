@@ -24,7 +24,7 @@ mod test_local_protocol {
     fn channel_ctx() -> Arc<ChannelContext> {
         #[cfg(feature = "epics-pvxs")]
         let epics_ctx = Arc::new(std::sync::Mutex::new(
-            mycela::pvxs_sys::Context::from_env().expect("pvxs context required"),
+            mycela::pvxs::Context::from_env().expect("pvxs context required"),
         ));
 
         #[cfg(feature = "modbus")]

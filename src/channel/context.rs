@@ -10,7 +10,7 @@ use crate::channel::value::ChannelValue;
 pub struct ChannelContext {
     pub local_store: Arc<crate::local_channel::LocalStore>,
     #[cfg(feature = "epics-pvxs")]
-    pub epics_ctx: Arc<std::sync::Mutex<pvxs_sys::Context>>,
+    pub epics_ctx: Arc<std::sync::Mutex<pvxs::Context>>,
     #[cfg(feature = "modbus")]
     pub modbus_pool: Arc<crate::modbus_client::ModbusPool>,
     #[cfg(feature = "modbus-server")]
@@ -120,7 +120,7 @@ impl ChannelContext {
 
     #[cfg(all(feature = "epics-pvxs", feature = "modbus"))]
     pub fn new(
-        epics_ctx: Arc<std::sync::Mutex<pvxs_sys::Context>>,
+        epics_ctx: Arc<std::sync::Mutex<pvxs::Context>>,
         modbus_pool: Arc<crate::modbus_client::ModbusPool>,
     ) -> Arc<Self> {
         Arc::new(Self {
@@ -136,7 +136,7 @@ impl ChannelContext {
     }
 
     #[cfg(all(feature = "epics-pvxs", not(feature = "modbus")))]
-    pub fn new(epics_ctx: Arc<std::sync::Mutex<pvxs_sys::Context>>) -> Arc<Self> {
+    pub fn new(epics_ctx: Arc<std::sync::Mutex<pvxs::Context>>) -> Arc<Self> {
         Arc::new(Self {
             local_store: crate::local_channel::LocalStore::new(),
             epics_ctx,

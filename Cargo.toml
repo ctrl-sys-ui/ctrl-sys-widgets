@@ -59,9 +59,8 @@ chrono = "0.4.44"
 # Charting (SVG-only backend, minimal deps)
 plotters = { version = "0.3", default-features = false, features = ["svg_backend", "line_series"] }
 
-# EPICS (optional — enable with feature "epics")
-# pvxs-sys = { path = "../pvxs-sys", optional = true }
-pvxs-sys = { version = "0.1.2", optional = true }
+# EPICS (optional — enable with feature "epics-pvxs")
+pvxs = { path = "../pvxs-rs", optional = true }
 
 # Modbus (optional — enable with feature "modbus-tcp-client" or "modbus-tcp-server")
 tokio-modbus = { version = "0.17.0", default-features = false, features = ["tcp"], optional = true }
@@ -77,7 +76,7 @@ tao   = { version = "0.35.3", optional = true }
 
 [features]
 default = ["epics-pvxs", "modbus", "ascii-tcp"]
-epics-pvxs     = ["dep:pvxs-sys"]
+epics-pvxs     = ["dep:pvxs"]
 modbus         = ["dep:tokio-modbus"]
 modbus-server  = ["dep:tokio-modbus", "tokio-modbus/tcp-server"]
 ascii-tcp      = ["dep:ascii-tcp"]
