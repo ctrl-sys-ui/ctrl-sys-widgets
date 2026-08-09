@@ -59,6 +59,16 @@ pub fn channel_stream(
         ));
     }
 
+    #[cfg(feature = "ascii-tcp")]
+    if let Some(ProtocolConfig::AsciiTcp(_)) = config.protocol.as_ref() {
+        return Box::pin(crate::ascii_tcp_client::stream(config));
+    }
+
+    #[cfg(feature = "ascii-serial")]
+    if let Some(ProtocolConfig::AsciiSerial(_)) = config.protocol.as_ref() {
+        return Box::pin(crate::ascii_serial_client::ascii_serial_stream(config));
+    }
+
     // No protocol configured or no matching feature enabled.
     let _ = ctx;
     Box::pin(futures::stream::empty::<ChannelEvent>())

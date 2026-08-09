@@ -1,6 +1,10 @@
 use crate::channel::ChannelContext;
+#[cfg(feature = "ascii-tcp")]
+use crate::config::AsciiTcpConfig;
 #[cfg(feature = "modbus")]
 use crate::config::ModbusTcpConfig;
+#[cfg(feature = "ascii-serial")]
+use crate::config::AsciiSerialConfig;
 use crate::config::{ActionConfig, ProtocolConfig, ScreenConfig, WidgetConfig, WidgetType};
 use maud::{html, Markup, PreEscaped};
 use std::sync::Arc;
@@ -415,6 +419,14 @@ pub async fn write_channel(
         Some(ProtocolConfig::ModbusTcp(m)) => {
             write_channel_modbus(&config.id, m.clone(), value_str, channel_ctx).await
         }
+        #[cfg(feature = "ascii-tcp")]
+        Some(ProtocolConfig::AsciiTcp(a)) => {
+            write_channel_ascii_tcp(&config.id, a.clone(), value_str).await
+        }
+        #[cfg(feature = "ascii-serial")]
+        Some(ProtocolConfig::AsciiSerial(s)) => {
+            write_channel_ascii_serial(&config.id, s.clone(), value_str).await
+        }
         _ => html! { span class="write-err" { "No protocol configured for this widget" } },
     }
 }
@@ -494,6 +506,38 @@ async fn write_channel_modbus(
         }
         Err(e) => {
             tracing::error!("[{}] write_channel Modbus error: {}", widget_id, e);
+            html! { span class="write-err" { "Error: " (e) } }
+        }
+    }
+}
+
+#[cfg(feature = "ascii-tcp")]
+async fn write_channel_ascii_tcp(widget_id: &str, a: AsciiTcpConfig, value_str: String) -> Markup {
+    match crate::ascii_tcp_client::write(&a, &value_str).await {
+        Ok(()) => {
+            tracing::info!("[{}] write_channel ASCII TCP OK", widget_id);
+            html! { span class="write-ok" { "OK" } }
+        }
+        Err(e) => {
+            tracing::error!("[{}] write_channel ASCII TCP error: {}", widget_id, e);
+            html! { span class="write-err" { "Error: " (e) } }
+        }
+    }
+}
+
+#[cfg(feature = "ascii-serial")]
+async fn write_channel_ascii_serial(
+    widget_id: &str,
+    s: AsciiSerialConfig,
+    value_str: String,
+) -> Markup {
+    match crate::ascii_serial_client::ascii_serial_write(&s, &value_str).await {
+        Ok(()) => {
+            tracing::info!("[{}] write_channel SERIAL TCP OK", widget_id);
+            html! { span class="write-ok" { "OK" } }
+        }
+        Err(e) => {
+            tracing::error!("[{}] write_channel SERIAL TCP error: {}", widget_id, e);
             html! { span class="write-err" { "Error: " (e) } }
         }
     }

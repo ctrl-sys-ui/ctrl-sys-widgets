@@ -16,6 +16,12 @@ pub mod local_channel;
 pub mod epics_channel;
 #[cfg(feature = "modbus")]
 pub mod modbus_client;
+#[cfg(feature = "ascii-tcp")]
+pub mod ascii_tcp_client;
+#[cfg(feature = "ascii-tcp")]
+pub mod ascii_tcp_server;
+#[cfg(feature = "ascii-serial")]
+pub mod ascii_serial_client;
 #[cfg(feature = "modbus-server")]
 pub mod modbus_server;
 #[cfg(feature = "modbus-server")]

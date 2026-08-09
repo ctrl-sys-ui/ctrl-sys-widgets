@@ -20,7 +20,9 @@ use axum::{
     routing::{get, post},
     Router,
 };
-use std::sync::{Arc, Mutex};
+#[cfg(feature = "epics-pvxs")]
+use std::sync::Mutex;
+use std::sync::Arc;
 
 #[cfg(feature = "epics-pvxs")]
 use crate::server_setup::setup_server_pvs;

@@ -588,6 +588,10 @@ fn build_chart_tooltip(config: &WidgetConfig, raw: &ChannelValue) -> String {
         Some(ProtocolConfig::EpicsPvxs(_)) => "EPICS PVA",
         #[cfg(feature = "modbus")]
         Some(ProtocolConfig::ModbusTcp(_)) => "Modbus TCP",
+        #[cfg(feature = "ascii-tcp")]
+        Some(ProtocolConfig::AsciiTcp(_)) => "ASCII TCP",
+        #[cfg(feature = "ascii-serial")]
+        Some(ProtocolConfig::AsciiSerial(_)) => "ASCII SERIAL",
         _ => "None",
     };
     t.push_str(&format!("ID: {}\n", config.id));

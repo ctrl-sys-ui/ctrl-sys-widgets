@@ -1,8 +1,13 @@
 use crate::app::AppState;
 use crate::channel::ChannelEvent;
-use crate::config::{ProtocolConfig, WidgetConfig};
+use crate::config::WidgetConfig;
+#[cfg(any(feature = "epics-pvxs", feature = "modbus"))]
+use crate::config::ProtocolConfig;
 use crate::ipc::{IpcCommand, IpcError, IpcErrorCode, IpcMessageKind, IpcRequest, IpcResponse};
-use crate::protocol_control::{self, ProtocolControlError};
+#[cfg(any(feature = "epics-pvxs", feature = "modbus"))]
+use crate::protocol_control::ProtocolControlError;
+#[cfg(any(feature = "epics-pvxs", feature = "modbus"))]
+use crate::protocol_control;
 use axum::http::StatusCode;
 use serde::Deserialize;
 use serde_json::json;
@@ -46,8 +51,14 @@ fn widget_is_epics(_widget: &WidgetConfig) -> bool {
     false
 }
 
+#[cfg(feature = "modbus")]
 fn widget_is_modbus(widget: &WidgetConfig) -> bool {
     matches!(widget.protocol.as_ref(), Some(ProtocolConfig::ModbusTcp(_)))
+}
+
+#[cfg(not(feature = "modbus"))]
+fn widget_is_modbus(_widget: &WidgetConfig) -> bool {
+    false
 }
 
 async fn read_widget_value(
@@ -288,16 +299,49 @@ pub async fn dispatch_request(
             IpcErrorCode::CmdUnknown,
             "Command is handled by desktop backend subscription orchestration",
         ),
-        IpcCommand::ModbusSimStart => match protocol_control::start_modbus_runtime(state) {
-            Ok(()) => ok_response(&request.id, json!({ "running": true })),
-            Err(error) => protocol_error_response(&request.id, error),
-        },
-        IpcCommand::ModbusSimStop => match protocol_control::stop_modbus_tasks(state) {
-            Ok(()) => ok_response(&request.id, json!({ "running": false })),
-            Err(error) => protocol_error_response(&request.id, error),
-        },
+        IpcCommand::ModbusSimStart => {
+            #[cfg(feature = "modbus")]
+            {
+                match protocol_control::start_modbus_runtime(state) {
+                    Ok(()) => ok_response(&request.id, json!({ "running": true })),
+                    Err(error) => protocol_error_response(&request.id, error),
+                }
+            }
+            #[cfg(not(feature = "modbus"))]
+            {
+                error_response(
+                    &request.id,
+                    IpcErrorCode::CmdUnknown,
+                    "Modbus feature is not enabled",
+                )
+            }
+        }
+        IpcCommand::ModbusSimStop => {
+            #[cfg(feature = "modbus")]
+            {
+                match protocol_control::stop_modbus_tasks(state) {
+                    Ok(()) => ok_response(&request.id, json!({ "running": false })),
+                    Err(error) => protocol_error_response(&request.id, error),
+                }
+            }
+            #[cfg(not(feature = "modbus"))]
+            {
+                error_response(
+                    &request.id,
+                    IpcErrorCode::CmdUnknown,
+                    "Modbus feature is not enabled",
+                )
+            }
+        }
         IpcCommand::ModbusSimStatusGet => {
-            ok_response(&request.id, json!({ "running": state.is_modbus_running() }))
+            #[cfg(feature = "modbus")]
+            {
+                ok_response(&request.id, json!({ "running": state.is_modbus_running() }))
+            }
+            #[cfg(not(feature = "modbus"))]
+            {
+                ok_response(&request.id, json!({ "running": false }))
+            }
         }
         IpcCommand::ModbusRead => {
             let payload = match serde_json::from_value::<ChannelReadPayload>(request.payload) {
@@ -435,6 +479,7 @@ fn error_response(id: &str, code: IpcErrorCode, message: &str) -> IpcResponse {
     }
 }
 
+#[cfg(any(feature = "epics-pvxs", feature = "modbus"))]
 fn protocol_error_response(id: &str, error: ProtocolControlError) -> IpcResponse {
     match error {
         ProtocolControlError::AlreadyRunning(message)

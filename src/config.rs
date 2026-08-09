@@ -480,6 +480,10 @@ pub enum ProtocolConfig {
     EpicsPvxs(EpicsPvxsConfig),
     #[cfg(feature = "modbus")]
     ModbusTcp(ModbusTcpConfig),
+    #[cfg(feature = "ascii-tcp")]
+    AsciiTcp(AsciiTcpConfig),
+    #[cfg(feature = "ascii-serial")]
+    AsciiSerial(AsciiSerialConfig),
 }
 
 /// In-process local channel configuration.
@@ -558,6 +562,132 @@ pub struct ModbusTcpConfig {
     pub bit_index: Option<u8>,
 }
 
+/// ASCII line protocol over TCP.
+#[cfg(feature = "ascii-tcp")]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AsciiTcpConfig {
+    /// Target host name or IP address.
+    pub host: String,
+    /// TCP port for ASCII line protocol endpoint.
+    pub port: u16,
+    /// Poll request line sent on each read cycle.
+    pub read_command: String,
+    /// Optional command template used for writes.
+    ///
+    /// When present, `{value}` is replaced with the requested value.
+    /// When absent, the raw value is sent as-is.
+    #[serde(default)]
+    pub write_command: Option<String>,
+    /// Line terminator appended to outbound requests.
+    #[serde(default)]
+    pub line_ending: AsciiLineEnding,
+    /// Minimum poll interval in milliseconds.
+    #[serde(default = "default_min_poll_interval_ms")]
+    pub min_poll_interval_ms: u64,
+    /// Scale factor applied to parsed numeric values.
+    #[serde(default = "default_scale")]
+    pub scale: f64,
+    /// Offset applied after scaling.
+    #[serde(default = "default_offset")]
+    pub offset: f64,
+    /// Response parse strategy.
+    #[serde(default)]
+    pub response_mode: AsciiResponseMode,
+}
+
+/// ASCII line protocol over serial.
+#[cfg(feature = "ascii-serial")]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AsciiSerialConfig {
+    /// Serial device path (e.g. COM3, /dev/ttyUSB0).
+    pub port_path: String,
+    /// Serial baud rate.
+    #[serde(default = "default_serial_baud_rate")]
+    pub baud_rate: u32,
+    /// Data bits setting.
+    #[serde(default)]
+    pub data_bits: SerialDataBits,
+    /// Parity setting.
+    #[serde(default)]
+    pub parity: SerialParity,
+    /// Stop bits setting.
+    #[serde(default)]
+    pub stop_bits: SerialStopBits,
+    /// Poll request line sent on each read cycle.
+    pub read_command: String,
+    /// Optional command template used for writes.
+    ///
+    /// When present, `{value}` is replaced with the requested value.
+    /// When absent, the raw value is sent as-is.
+    #[serde(default)]
+    pub write_command: Option<String>,
+    /// Line terminator appended to outbound requests.
+    #[serde(default)]
+    pub line_ending: AsciiLineEnding,
+    /// Minimum poll interval in milliseconds.
+    #[serde(default = "default_min_poll_interval_ms")]
+    pub min_poll_interval_ms: u64,
+    /// Scale factor applied to parsed numeric values.
+    #[serde(default = "default_scale")]
+    pub scale: f64,
+    /// Offset applied after scaling.
+    #[serde(default = "default_offset")]
+    pub offset: f64,
+    /// Response parse strategy.
+    #[serde(default)]
+    pub response_mode: AsciiResponseMode,
+}
+
+#[cfg(any(feature = "ascii-tcp", feature = "ascii-serial"))]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Default)]
+#[serde(rename_all = "kebab-case")]
+pub enum AsciiLineEnding {
+    #[default]
+    Lf,
+    CrLf,
+    Cr,
+}
+
+#[cfg(any(feature = "ascii-tcp", feature = "ascii-serial"))]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Default)]
+#[serde(rename_all = "kebab-case")]
+pub enum AsciiResponseMode {
+    #[default]
+    Number,
+    Bool,
+    Text,
+}
+
+#[cfg(feature = "ascii-serial")]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Default)]
+#[serde(rename_all = "kebab-case")]
+pub enum SerialDataBits {
+    Five,
+    Six,
+    Seven,
+    #[default]
+    Eight,
+}
+
+#[cfg(feature = "ascii-serial")]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Default)]
+#[serde(rename_all = "kebab-case")]
+pub enum SerialParity {
+    #[default]
+    None,
+    Odd,
+    Even,
+}
+
+#[cfg(feature = "ascii-serial")]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Default)]
+#[serde(rename_all = "kebab-case")]
+pub enum SerialStopBits {
+    #[default]
+    One,
+    Two,
+}
+
 #[cfg(feature = "modbus")]
 fn default_modbus_port() -> u16 {
     502
@@ -566,21 +696,26 @@ fn default_modbus_port() -> u16 {
 fn default_unit_id() -> u8 {
     1
 }
-#[cfg(feature = "modbus")]
+#[cfg(any(feature = "modbus", feature = "ascii-tcp", feature = "ascii-serial"))]
 fn default_min_poll_interval_ms() -> u64 {
     500
 }
-#[cfg(feature = "modbus")]
+#[cfg(any(feature = "modbus", feature = "ascii-tcp", feature = "ascii-serial"))]
 fn default_scale() -> f64 {
     1.0
 }
-#[cfg(feature = "modbus")]
+#[cfg(any(feature = "modbus", feature = "ascii-tcp", feature = "ascii-serial"))]
 fn default_offset() -> f64 {
     0.0
 }
 #[cfg(feature = "modbus")]
 fn default_word_count() -> u8 {
     1
+}
+
+#[cfg(feature = "ascii-serial")]
+fn default_serial_baud_rate() -> u32 {
+    9600
 }
 
 /// Modbus register / coil type.
@@ -712,6 +847,14 @@ impl WidgetConfig {
             Some(ProtocolConfig::ModbusTcp(m)) => {
                 format!("modbus-tcp://{}:{}/reg{}", m.host, m.port, m.register)
             }
+            #[cfg(feature = "ascii-tcp")]
+            Some(ProtocolConfig::AsciiTcp(a)) => {
+                format!("ascii-tcp://{}:{}", a.host, a.port)
+            }
+            #[cfg(feature = "ascii-serial")]
+            Some(ProtocolConfig::AsciiSerial(s)) => {
+                format!("ascii-serial://{}@{}", s.port_path, s.baud_rate)
+            }
             _ => String::new(),
         }
     }
@@ -738,6 +881,24 @@ impl WidgetConfig {
     pub fn modbus_tcp(&self) -> Option<&ModbusTcpConfig> {
         match &self.protocol {
             Some(ProtocolConfig::ModbusTcp(m)) => Some(m),
+            _ => None,
+        }
+    }
+
+    /// Returns the `AsciiTcpConfig` if this widget uses the `ascii-tcp` protocol.
+    #[cfg(feature = "ascii-tcp")]
+    pub fn ascii_tcp(&self) -> Option<&AsciiTcpConfig> {
+        match &self.protocol {
+            Some(ProtocolConfig::AsciiTcp(a)) => Some(a),
+            _ => None,
+        }
+    }
+
+    /// Returns the `AsciiSerialConfig` if this widget uses the `ascii-serial` protocol.
+    #[cfg(feature = "ascii-serial")]
+    pub fn ascii_serial(&self) -> Option<&AsciiSerialConfig> {
+        match &self.protocol {
+            Some(ProtocolConfig::AsciiSerial(s)) => Some(s),
             _ => None,
         }
     }

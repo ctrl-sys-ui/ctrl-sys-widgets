@@ -66,16 +66,22 @@ pvxs-sys = { version = "0.1.2", optional = true }
 # Modbus (optional — enable with feature "modbus-tcp-client" or "modbus-tcp-server")
 tokio-modbus = { version = "0.17.0", default-features = false, features = ["tcp"], optional = true }
 
+# ASCII protocols (optional)
+ascii-tcp = { path = "../ascii-tcp", optional = true }
+ascii-serial = { path = "../ascii-serial", optional = true }
+
 # Desktop (optional — enable with feature "desktop")
 wry   = { version = "0.55", optional = true }
 winit = { version = "0.30", optional = true }
 tao   = { version = "0.35.3", optional = true }
 
 [features]
-default = ["epics-pvxs", "modbus"]
+default = ["epics-pvxs", "modbus", "ascii-tcp"]
 epics-pvxs     = ["dep:pvxs-sys"]
 modbus         = ["dep:tokio-modbus"]
 modbus-server  = ["dep:tokio-modbus", "tokio-modbus/tcp-server"]
+ascii-tcp      = ["dep:ascii-tcp"]
+ascii-serial   = ["dep:ascii-serial"]
 desktop        = ["dep:wry", "dep:winit", "dep:tao"]
 
 [dev-dependencies]

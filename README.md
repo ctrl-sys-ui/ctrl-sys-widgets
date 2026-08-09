@@ -7,7 +7,7 @@ Mycela is a Rust framework for distributed control system UIs, combining an Axum
 ### Key Benefits
 
 - **Simple & Fast** — HTMX + SSE for real-time updates
-- **Multi-protocol** — EPICS PVAccess and Modbus TCP supported out of the box. More to come (OPC UA, MQTT, etc.)
+- **Multi-protocol** — EPICS PVAccess, Modbus TCP, ASCII TCP, and ASCII SERIAL adapters supported.
 - **Alarm aware** — Full alarm severity display (MAJOR / MINOR / INVALID / OFFLINE).
 - **Airgap ready** — All assets (HTMX, fonts, CSS) are embedded in the executable. Simple deployment to isolated networks. **Not to be used as a web service on the public internet.**
 
@@ -19,6 +19,8 @@ Mycela is a Rust framework for distributed control system UIs, combining an Axum
 - Rust 1.75+ (`rustup update`)
 - For EPICS: `pvxs-sys`
 - For Modbus: `tokio-modbus`
+- For ASCII TCP: sibling crate `ascii-tcp`
+- For ASCII SERIAL: sibling crate `ascii-serial`
 
 ### Demo Server (browser-based)
 
@@ -31,6 +33,51 @@ cargo run --example demo_server --no-default-features --features epics
 
 # Modbus only
 cargo run --example demo_server --no-default-features --features modbus
+```
+
+ASCII protocol examples using the same tagged `protocol` shape:
+
+```json
+{
+  "id": "flow_ascii_tcp",
+  "type": "text_update",
+  "label": "Flow (ASCII TCP)",
+  "data_type": "double",
+  "protocol": {
+    "type": "ascii-tcp",
+    "host": "127.0.0.1",
+    "port": 4000,
+    "read_command": "READ FLOW",
+    "write_command": "SET FLOW {value}",
+    "line_ending": "crlf",
+    "response_mode": "number",
+    "scale": 1.0,
+    "offset": 0.0,
+    "min_poll_interval_ms": 500
+  }
+}
+```
+
+```json
+{
+  "id": "valve_ascii_serial",
+  "type": "toggle_button",
+  "label": "Valve Cmd (ASCII SERIAL)",
+  "data_type": "bool",
+  "protocol": {
+    "type": "ascii-serial",
+    "port_path": "COM3",
+    "baud_rate": 9600,
+    "data_bits": "eight",
+    "parity": "none",
+    "stop_bits": "one",
+    "read_command": "VALVE?",
+    "write_command": "VALVE {value}",
+    "line_ending": "lf",
+    "response_mode": "bool",
+    "min_poll_interval_ms": 500
+  }
+}
 ```
 
 Server starts at: **http://127.0.0.1:3000**
