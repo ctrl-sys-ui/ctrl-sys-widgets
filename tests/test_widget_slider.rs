@@ -22,22 +22,35 @@ mod test_widget_slider {
 
     #[test]
     fn test_connected_slider_with_no_alarm_shows_no_status_icon() {
-        let cv = ChannelValue { value_str: "50.0".to_string(), ..ChannelValue::default() };
-        let html = render_inner_connected(&w(), &cv).into_string();
+        let cv = ChannelValue {
+            value_str: "50.0".to_string(),
+            ..ChannelValue::default()
+        };
+        let cv = ChannelValue {
+            alarm_severity: 0,
+            ..cv
+        };
+        let html = render_inner_connected(&w(), &cv, true).into_string();
         assert!(!html.contains("widget-status-icon"), "got: {html}");
     }
 
     #[test]
     fn test_connected_slider_with_minor_alarm_shows_minor_alarm_icon() {
-        let cv = ChannelValue { alarm_severity: 1, ..ChannelValue::default() };
-        let html = render_inner_connected(&w(), &cv).into_string();
+        let cv = ChannelValue {
+            alarm_severity: 1,
+            ..ChannelValue::default()
+        };
+        let html = render_inner_connected(&w(), &cv, true).into_string();
         assert!(html.contains(MINOR_ALARM_SVG));
     }
 
     #[test]
     fn test_connected_slider_with_major_alarm_shows_major_alarm_icon() {
-        let cv = ChannelValue { alarm_severity: 2, ..ChannelValue::default() };
-        let html = render_inner_connected(&w(), &cv).into_string();
+        let cv = ChannelValue {
+            alarm_severity: 2,
+            ..ChannelValue::default()
+        };
+        let html = render_inner_connected(&w(), &cv, true).into_string();
         assert!(html.contains(MAJOR_ALARM_SVG));
     }
 
@@ -50,7 +63,7 @@ mod test_widget_slider {
             value_str: "50.0".to_string(),
             ..ChannelValue::default()
         };
-        let html = render_inner_connected(&w(), &cv).into_string();
+        let html = render_inner_connected(&w(), &cv, true).into_string();
         assert!(
             html.contains("10") && html.contains("90"),
             "expected range in output, got: {html}"

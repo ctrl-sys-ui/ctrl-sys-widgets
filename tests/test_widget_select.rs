@@ -20,22 +20,36 @@ mod test_widget_select {
 
     #[test]
     fn test_connected_select_with_no_alarm_uses_alarm_none_class() {
-        let cv = ChannelValue { enum_index: 0, enum_choices: vec![], ..ChannelValue::default() };
-        let html = render_inner_connected(&w(), &cv).into_string();
+        let cv = ChannelValue {
+            enum_index: 0,
+            enum_choices: vec![],
+            ..ChannelValue::default()
+        };
+        let cv = ChannelValue {
+            alarm_severity: 0,
+            ..cv
+        };
+        let html = render_inner_connected(&w(), &cv, true).into_string();
         assert!(html.contains("widget-select alarm-none"), "got: {html}");
     }
 
     #[test]
     fn test_connected_select_with_minor_alarm_uses_alarm_minor_class() {
-        let cv = ChannelValue { alarm_severity: 1, ..ChannelValue::default() };
-        let html = render_inner_connected(&w(), &cv).into_string();
+        let cv = ChannelValue {
+            alarm_severity: 1,
+            ..ChannelValue::default()
+        };
+        let html = render_inner_connected(&w(), &cv, true).into_string();
         assert!(html.contains("widget-select alarm-minor"));
     }
 
     #[test]
     fn test_connected_select_with_major_alarm_uses_alarm_major_class() {
-        let cv = ChannelValue { alarm_severity: 2, ..ChannelValue::default() };
-        let html = render_inner_connected(&w(), &cv).into_string();
+        let cv = ChannelValue {
+            alarm_severity: 2,
+            ..ChannelValue::default()
+        };
+        let html = render_inner_connected(&w(), &cv, true).into_string();
         assert!(html.contains("widget-select alarm-major"));
     }
 
@@ -46,7 +60,7 @@ mod test_widget_select {
             enum_choices: vec!["Auto".to_string(), "Manual".to_string(), "Off".to_string()],
             ..ChannelValue::default()
         };
-        let html = render_inner_connected(&w(), &cv).into_string();
+        let html = render_inner_connected(&w(), &cv, true).into_string();
         assert!(html.contains("Auto"));
         assert!(html.contains("Manual"));
         assert!(html.contains("Off"));
@@ -59,7 +73,7 @@ mod test_widget_select {
             enum_choices: vec!["A".to_string(), "B".to_string(), "C".to_string()],
             ..ChannelValue::default()
         };
-        let html = render_inner_connected(&w(), &cv).into_string();
+        let html = render_inner_connected(&w(), &cv, true).into_string();
         assert!(html.contains("selected"));
     }
 
@@ -70,7 +84,7 @@ mod test_widget_select {
             enum_choices: vec!["Off".to_string(), "On".to_string()],
             ..ChannelValue::default()
         };
-        let html = render_inner_connected(&w(), &cv).into_string();
+        let html = render_inner_connected(&w(), &cv, true).into_string();
         assert!(html.contains("class=\"status\""), "got: {html}");
     }
 }

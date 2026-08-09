@@ -1,6 +1,6 @@
 mod test_config_widget_config {
     use mycela::config::{
-        AppConfig, EpicsPvxsConfig, LocalConfig, ModbusTcpConfig, ModbusRegisterType,
+        AppConfig, EpicsPvxsConfig, LocalConfig, ModbusRegisterType, ModbusTcpConfig,
         ProtocolConfig, WidgetConfig, WidgetType,
     };
 
@@ -202,7 +202,7 @@ mod test_config_widget_config {
 
         assert_eq!(parsed.widget_type, WidgetType::ToggleButton);
         assert_eq!(parsed.reset_timeout, Some(1500));
-        assert_eq!(parsed.reset_default, Some(0));
+        assert_eq!(parsed.reset_default, Some(0.0));
     }
 
     #[test]

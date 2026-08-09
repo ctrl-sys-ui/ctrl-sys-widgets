@@ -44,13 +44,30 @@ mod test_epics_connection_events {
             .expect("stream ended unexpectedly")
     }
 
+    async fn stop_server_with_timeout(server: pvxs::Server, timeout: Duration) {
+        let (result_tx, result_rx) = tokio::sync::oneshot::channel();
+
+        // A timed-out spawn_blocking task keeps running and can hold the Tokio
+        // blocking pool open. A detached OS thread lets the test fail promptly.
+        std::thread::spawn(move || {
+            let _ = result_tx.send(server.stop_drop());
+        });
+
+        match tokio::time::timeout(timeout, result_rx).await {
+            Ok(Ok(Ok(()))) => {}
+            Ok(Ok(Err(error))) => panic!("PVXS server stop failed: {error}"),
+            Ok(Err(_)) => panic!("PVXS server stop thread exited without a result"),
+            Err(_) => panic!("timed out stopping PVXS server after {timeout:?}"),
+        }
+    }
+
     // ── error-path test (no network required) ─────────────────────────────────
 
     /// When a widget has no `EpicsPva` protocol config, `run_single_monitor`
     /// emits an `Error` event immediately and exits — no IOC connection needed.
     #[tokio::test]
     async fn epics_stream_emits_error_for_widget_without_epics_protocol() {
-        let ctx    = Arc::new(Mutex::new(pvxs::Context::from_env().unwrap()));
+        let ctx = Arc::new(Mutex::new(pvxs::Context::from_env().unwrap()));
         let config = no_protocol_widget();
         let mut stream = Box::pin(epics_stream(config, ctx));
 
@@ -84,13 +101,17 @@ mod test_epics_connection_events {
             .expect("could not start local PVXS server");
 
         server
-            .create_pv_double("test:mycela:connected", 42.0, pvxs::NTScalarMetadataBuilder::new())
+            .create_pv_double(
+                "test:mycela:connected",
+                42.0,
+                pvxs::NTScalarMetadataBuilder::new(),
+            )
             .expect("could not create test PV");
 
         // Allow the server to fully advertise the PV before the client connects.
         tokio::time::sleep(Duration::from_millis(250)).await;
 
-        let ctx    = Arc::new(Mutex::new(pvxs::Context::from_env().unwrap()));
+        let ctx = Arc::new(Mutex::new(pvxs::Context::from_env().unwrap()));
         let config = epics_widget("test:mycela:connected");
         let mut stream = Box::pin(epics_stream(config, ctx));
 
@@ -114,12 +135,16 @@ mod test_epics_connection_events {
             .expect("could not start local PVXS server");
 
         server
-            .create_pv_double("test:mycela:disconnect", 1.0, pvxs::NTScalarMetadataBuilder::new())
+            .create_pv_double(
+                "test:mycela:disconnect",
+                1.0,
+                pvxs::NTScalarMetadataBuilder::new(),
+            )
             .expect("could not create test PV");
 
         tokio::time::sleep(Duration::from_millis(250)).await;
 
-        let ctx    = Arc::new(Mutex::new(pvxs::Context::from_env().unwrap()));
+        let ctx = Arc::new(Mutex::new(pvxs::Context::from_env().unwrap()));
         let config = epics_widget("test:mycela:disconnect");
         let mut stream = Box::pin(epics_stream(config, ctx));
 
@@ -133,24 +158,25 @@ mod test_epics_connection_events {
         }
 
         // Stop the server — the PVA client should detect the broken connection.
-        tokio::task::spawn_blocking(move || {
-            let _ = server.stop_drop();
+        stop_server_with_timeout(server, Duration::from_secs(5)).await;
+
+        // Use one deadline for the whole phase. A timeout around each event can
+        // run forever if the stream keeps producing Value events.
+        tokio::time::timeout(Duration::from_secs(10), async {
+            loop {
+                let ev = stream
+                    .next()
+                    .await
+                    .expect("stream ended before Disconnected");
+
+                match ev {
+                    ChannelEvent::Disconnected(_) => break,
+                    ChannelEvent::Value(_) | ChannelEvent::Connected => continue,
+                    ChannelEvent::Error(e) => panic!("unexpected Error: {e}"),
+                }
+            }
         })
         .await
-        .unwrap();
-
-        // PVA disconnect detection can take several seconds; allow up to 30 s.
-        loop {
-            let ev = tokio::time::timeout(Duration::from_secs(30), stream.next())
-                .await
-                .expect("timed out waiting for Disconnected after server stop")
-                .expect("stream ended before Disconnected");
-
-            match ev {
-                ChannelEvent::Disconnected(_) => break,
-                ChannelEvent::Value(_) | ChannelEvent::Connected => continue,
-                ChannelEvent::Error(e) => panic!("unexpected Error: {e}"),
-            }
-        }
+        .expect("timed out waiting for Disconnected after server stop");
     }
 }

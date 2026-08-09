@@ -23,6 +23,70 @@
         return typeof window.MYCELA_IPC_TOKEN === 'string';
     }
 
+    function deferHtmxEventSourceConnection() {
+        if (!window.htmx || isIpcTransport()) {
+            return;
+        }
+
+        const createEventSource = window.htmx.createEventSource;
+        window.htmx.createEventSource = function(url) {
+            let source = null;
+            let closed = false;
+            let errorHandler = null;
+            const listeners = [];
+            const deferredSource = {
+                addEventListener: function(type, listener, options) {
+                    listeners.push({ type: type, listener: listener, options: options });
+                    if (source) {
+                        source.addEventListener(type, listener, options);
+                    }
+                },
+                removeEventListener: function(type, listener, options) {
+                    const index = listeners.findIndex(function(entry) {
+                        return entry.type === type && entry.listener === listener;
+                    });
+                    if (index !== -1) {
+                        listeners.splice(index, 1);
+                    }
+                    if (source) {
+                        source.removeEventListener(type, listener, options);
+                    }
+                },
+                close: function() {
+                    closed = true;
+                    if (source) {
+                        source.close();
+                    }
+                }
+            };
+
+            Object.defineProperty(deferredSource, 'onerror', {
+                get: function() { return errorHandler; },
+                set: function(handler) {
+                    errorHandler = handler;
+                    if (source) {
+                        source.onerror = handler;
+                    }
+                }
+            });
+
+            window.setTimeout(function() {
+                if (closed) {
+                    return;
+                }
+                source = createEventSource(url);
+                source.onerror = errorHandler;
+                listeners.forEach(function(entry) {
+                    source.addEventListener(entry.type, entry.listener, entry.options);
+                });
+            }, 0);
+
+            return deferredSource;
+        };
+    }
+
+    deferHtmxEventSourceConnection();
+
     function mapPathToCommand(method, path) {
         const normalizedMethod = String(method || 'get').toLowerCase();
         if (normalizedMethod === 'post' && path === '/api/server/start') return 'epics_server_start';

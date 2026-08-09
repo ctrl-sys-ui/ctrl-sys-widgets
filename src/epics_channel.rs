@@ -82,6 +82,10 @@ fn run_single_monitor(
     }
 
     loop {
+        if tx.is_closed() {
+            break;
+        }
+
         match monitor.pop() {
             Ok(Some(raw)) => {
                 let cv = channel_value_from_epics(&raw, &config);
@@ -158,6 +162,10 @@ fn run_multi_monitor(
                 }
 
                 loop {
+                    if tx.is_closed() {
+                        break;
+                    }
+
                     match monitor.pop() {
                         Ok(Some(raw)) => {
                             if let Ok(arr) = raw.get_field_double_array("value") {
