@@ -585,7 +585,7 @@ fn build_chart_tooltip(config: &WidgetConfig, raw: &ChannelValue) -> String {
     let protocol_label = match &config.protocol {
         Some(ProtocolConfig::Local(_)) => "Local",
         #[cfg(feature = "epics-pvxs")]
-        Some(ProtocolConfig::EpicsPvxs(_)) => "EPICS PVA",
+        Some(ProtocolConfig::EpicsPvxs(_)) => "EPICS PVXS",
         #[cfg(feature = "modbus")]
         Some(ProtocolConfig::ModbusTcp(_)) => "Modbus TCP",
         #[cfg(feature = "ascii-tcp")]
@@ -673,7 +673,7 @@ fn build_chart_tooltip(config: &WidgetConfig, raw: &ChannelValue) -> String {
     t.trim_end().to_string()
 }
 
-/// Collect all PV names for a multi-series line chart (primary + extras from EpicsPva config).
+/// Collect all PV names for a multi-series line chart (primary + extras from PVXS config).
 fn collect_series_pvs(config: &WidgetConfig) -> Vec<String> {
     match &config.protocol {
         #[cfg(feature = "epics-pvxs")]

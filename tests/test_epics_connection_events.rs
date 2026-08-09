@@ -63,7 +63,7 @@ mod test_epics_connection_events {
 
     // ── error-path test (no network required) ─────────────────────────────────
 
-    /// When a widget has no `EpicsPva` protocol config, `run_single_monitor`
+    /// When a widget has no `EpicsPvxs` protocol config, `run_single_monitor`
     /// emits an `Error` event immediately and exits — no IOC connection needed.
     #[tokio::test]
     async fn epics_stream_emits_error_for_widget_without_epics_protocol() {
@@ -74,7 +74,7 @@ mod test_epics_connection_events {
         let ev = next_event(&mut stream).await;
         assert!(
             matches!(ev, ChannelEvent::Error(_)),
-            "expected Error for widget without an EpicsPva protocol, got {:?}",
+            "expected Error for widget without an EpicsPvxs protocol, got {:?}",
             ev
         );
     }
@@ -127,7 +127,7 @@ mod test_epics_connection_events {
     /// Verify that `Disconnected` is emitted after the PVXS server that serves
     /// the monitored PV is stopped.
     #[tokio::test]
-    #[ignore = "starts a local PVXS server and waits for PVA disconnect detection; may be slow — run with --ignored"]
+    #[ignore = "starts a local PVXS server and waits for disconnect detection; may be slow — run with --ignored"]
     async fn epics_stream_emits_disconnected_after_server_stops() {
         let server = tokio::task::spawn_blocking(|| pvxs::Server::start_from_env())
             .await
@@ -157,7 +157,7 @@ mod test_epics_connection_events {
             }
         }
 
-        // Stop the server — the PVA client should detect the broken connection.
+        // Stop the server; the PVXS client should detect the broken connection.
         stop_server_with_timeout(server, Duration::from_secs(5)).await;
 
         // Use one deadline for the whole phase. A timeout around each event can

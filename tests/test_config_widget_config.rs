@@ -35,7 +35,7 @@ mod test_config_widget_config {
     }
 
     #[test]
-    fn test_epics_pva_protocol_produces_pv_name_as_channel_address() {
+    fn test_epics_pvxs_protocol_produces_pv_name_as_channel_address() {
         let mut w = widget("w1", WidgetType::TextUpdate);
         w.protocol = Some(ProtocolConfig::EpicsPvxs(EpicsPvxsConfig {
             pv_name: "test:pv".to_string(),
@@ -79,7 +79,7 @@ mod test_config_widget_config {
     }
 
     #[test]
-    fn test_epics_pva_accessor_returns_some_and_modbus_returns_none() {
+    fn test_epics_pvxs_accessor_returns_some_and_modbus_returns_none() {
         let mut w = widget("e", WidgetType::TextUpdate);
         w.protocol = Some(ProtocolConfig::EpicsPvxs(EpicsPvxsConfig {
             pv_name: "x:pv".to_string(),

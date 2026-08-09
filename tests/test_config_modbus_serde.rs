@@ -1,5 +1,8 @@
 mod test_config_modbus_serde {
-    use mycela::config::{ModbusTcpConfig, ModbusRegisterType, ScreenConfig};
+    use mycela::config::{
+        ModbusRegisterType, ModbusTcpConfig, ScreenConfig, WidgetServerEpicsPvxsConfig,
+        WidgetServerProtocolConfig,
+    };
     use std::fs;
     use std::path::PathBuf;
     use std::time::{SystemTime, UNIX_EPOCH};
@@ -58,6 +61,19 @@ mod test_config_modbus_serde {
             let parsed: ModbusRegisterType = serde_json::from_str(expected_json).unwrap();
             assert_eq!(parsed, variant);
         }
+    }
+
+    #[test]
+    fn test_widget_server_epics_pvxs_tag_and_legacy_alias() {
+        let config = WidgetServerProtocolConfig::EpicsPvxs(WidgetServerEpicsPvxsConfig {
+            pv_name: "test:pv".to_string(),
+        });
+        let json = serde_json::to_string(&config).unwrap();
+        assert!(json.contains(r#""type":"epics-pvxs""#));
+
+        let legacy: WidgetServerProtocolConfig =
+            serde_json::from_str(r#"{"type":"epics-pva","pv_name":"test:pv"}"#).unwrap();
+        assert!(matches!(legacy, WidgetServerProtocolConfig::EpicsPvxs(_)));
     }
 
     #[test]

@@ -78,7 +78,7 @@ pub struct AppState {
 }
 
 impl AppState {
-    /// Returns `true` when the EPICS PVA server is currently running.
+    /// Returns `true` when the PVXS server is currently running.
     pub fn is_server_running(&self) -> bool {
         #[cfg(feature = "epics-pvxs")]
         {
@@ -94,8 +94,11 @@ impl AppState {
     /// the button re-renders as disabled/enabled without any extra wiring.
     ///
     /// ```rust
+    /// # use mycela::app::AppState;
+    /// # fn update_interlock(state: &AppState) {
     /// state.set_widget_enabled("cmd_fire", false); // locked
     /// state.set_widget_enabled("cmd_fire", true);  // ready
+    /// # }
     /// ```
     pub fn set_widget_enabled(&self, widget_id: &str, enabled: bool) {
         self.channel_ctx.set_widget_enabled(widget_id, enabled);
@@ -165,7 +168,10 @@ impl AppState {
     /// 
     /// This can only be used for widgets that have a `write` protocol configured, otherwise it will have no effect.
     /// ```rust
+    /// # use mycela::app::AppState;
+    /// # fn reset_command(state: &AppState) {
     /// state.force_widget_value("cmd_arm", 0.0); // force the "cmd_arm" button to its default state
+    /// # }
     /// ```
     pub fn force_widget_value(&self, widget_id: &str, value: f64) {
         // Look up the widget config. Use collect_data_widgets so Group children are included.
@@ -277,14 +283,9 @@ pub async fn write_widget_markup(
                 w.protocol.as_ref(),
                 Some(crate::config::ProtocolConfig::Local(_))
             );
-            let is_command_widget = matches!(
-                w.widget_type,
-                WidgetType::Button | WidgetType::ToggleButton
-            );
             let is_connected = state.channel_ctx.is_widget_connected(widget_id);
             if is_writable_widget
                 && !is_local_protocol
-                && !is_command_widget
                 && !is_connected
                 && !requested_reset_write
             {

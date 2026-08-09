@@ -41,7 +41,7 @@ pub(super) fn build_tooltip(config: &crate::config::WidgetConfig, cv: &crate::ch
     let protocol_label = match &config.protocol {
         Some(ProtocolConfig::Local(_)) => "Local",
         #[cfg(feature = "epics-pvxs")]
-        Some(ProtocolConfig::EpicsPvxs(_)) => "EPICS PVA",
+        Some(ProtocolConfig::EpicsPvxs(_)) => "EPICS PVXS",
         #[cfg(feature = "modbus")]
         Some(ProtocolConfig::ModbusTcp(_)) => "Modbus TCP",
         #[cfg(feature = "ascii-tcp")]

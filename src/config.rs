@@ -213,7 +213,8 @@ pub struct WidgetServerConfig {
 pub enum WidgetServerProtocolConfig {
     ModbusTcp(WidgetServerModbusTcpConfig),
     #[cfg(feature = "epics-pvxs")]
-    EpicsPva(WidgetServerEpicsPvaConfig),
+    #[serde(alias = "epics-pva")]
+    EpicsPvxs(WidgetServerEpicsPvxsConfig),
 }
 
 #[cfg(feature = "modbus")]
@@ -226,7 +227,7 @@ pub struct WidgetServerModbusTcpConfig {
 
 #[cfg(all(feature = "modbus", feature = "epics-pvxs"))]
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct WidgetServerEpicsPvaConfig {
+pub struct WidgetServerEpicsPvxsConfig {
     pub pv_name: String,
 }
 
@@ -796,7 +797,7 @@ pub struct WidgetConfig {
     pub size: Option<WidgetSize>,
     /// Widget-level default metadata (display limits, units, precision, alarm bands).
     /// Used as fallback when the protocol backend has not yet delivered its own metadata
-    /// (e.g. EPICS PVA before the first monitor update) and as the primary metadata
+    /// (e.g. PVXS before the first monitor update) and as the primary metadata
     /// source for protocols that carry no metadata themselves (e.g. Modbus TCP).
     #[serde(default)]
     pub metadata: Option<PvMetadata>,
@@ -904,7 +905,7 @@ impl WidgetConfig {
     }
 }
 
-/// Server configuration for providing an EPICS PV (lives inside `EpicsPvaConfig.server`).
+/// Server configuration for providing an EPICS PV (lives inside `EpicsPvxsConfig.server`).
 #[cfg(feature = "epics-pvxs")]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ServerConfig {

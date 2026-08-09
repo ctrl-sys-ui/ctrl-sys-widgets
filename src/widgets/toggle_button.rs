@@ -39,7 +39,11 @@ impl ToggleButton {
 }
 
 pub fn render_inner_connected(config: &WidgetConfig, cv: &ChannelValue) -> Markup {
-    render_inner_connected_with_countdown(config, cv, None, true)
+    let countdown_secs = (cv.raw_value > 0.5)
+        .then(|| config.reset_timeout.filter(|timeout_ms| *timeout_ms > 0))
+        .flatten()
+        .map(|timeout_ms| timeout_ms.div_ceil(1000));
+    render_inner_connected_with_countdown(config, cv, countdown_secs, true)
 }
 
 pub fn render_inner_disconnected(config: &WidgetConfig) -> Markup {

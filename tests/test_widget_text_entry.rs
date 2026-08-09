@@ -30,7 +30,11 @@ mod test_widget_text_entry {
 
     #[test]
     fn test_connected_text_entry_with_no_alarm_uses_alarm_none_class() {
-        let cv = ChannelValue { value_str: "50.0".to_string(), ..ChannelValue::default() };
+        let cv = ChannelValue {
+            value_str: "50.0".to_string(),
+            alarm_severity: 0,
+            ..ChannelValue::default()
+        };
         let html = render_inner_connected(&w(), &cv, true).into_string();
         assert!(html.contains("alarm-none"), "got: {html}");
     }

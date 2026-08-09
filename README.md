@@ -7,7 +7,7 @@ Mycela is a Rust framework for distributed control system UIs, combining an Axum
 ### Key Benefits
 
 - **Simple & Fast** — HTMX + SSE for real-time updates
-- **Multi-protocol** — EPICS PVAccess, Modbus TCP, ASCII TCP, and ASCII SERIAL adapters supported.
+- **Multi-protocol** — EPICS via PVXS, Modbus TCP, ASCII TCP, and ASCII SERIAL adapters supported.
 - **Alarm aware** — Full alarm severity display (MAJOR / MINOR / INVALID / OFFLINE).
 - **Airgap ready** — All assets (HTMX, fonts, CSS) are embedded in the executable. Simple deployment to isolated networks. **Not to be used as a web service on the public internet.**
 

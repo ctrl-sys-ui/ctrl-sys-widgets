@@ -34,7 +34,11 @@ mod test_widget_text_readout {
 
     #[test]
     fn test_connected_text_update_with_no_alarm_uses_alarm_none_class_and_displays_value() {
-        let cv = ChannelValue { value_str: "42.0".to_string(), ..ChannelValue::default() };
+        let cv = ChannelValue {
+            value_str: "42.0".to_string(),
+            alarm_severity: 0,
+            ..ChannelValue::default()
+        };
         let html = render_inner_connected(&w(), &cv).into_string();
         assert!(html.contains("alarm-none"), "alarm-none must be in HTML, got: {html}");
         assert!(html.contains("42.0"));

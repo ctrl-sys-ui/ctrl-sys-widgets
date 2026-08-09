@@ -79,35 +79,30 @@ pub fn render_inner_connected(config: &WidgetConfig, cv: &ChannelValue) -> Marku
         _ => None,
     };
     let display_value = if cv.value_str.is_empty() {
-        format!("{:.prec$}", cv.raw_value, prec = cv.precision as usize)
+        format_gauge_value(cv.raw_value, cv.precision)
     } else {
         cv.value_str.clone()
     };
-    let min = cv.display_low;
-    let max = if (cv.display_high - cv.display_low).abs() < f64::EPSILON {
-        cv.display_low + 100.0
-    } else {
-        cv.display_high
-    };
+    let (min, max) = gauge_range(cv.display_low, cv.display_high);
     let percentage = ((cv.raw_value - min) / (max - min) * 100.0).clamp(0.0, 100.0);
     let range = max - min;
     let to_pct = |v: f64| ((v - min) / range * 100.0).clamp(0.0, 100.0);
-    let low_alarm = if cv.low_alarm_limit != 0.0 {
+    let low_alarm = if cv.low_alarm_limit != f64::MIN {
         Some((cv.low_alarm_limit, to_pct(cv.low_alarm_limit)))
     } else {
         None
     };
-    let low_warn = if cv.low_warn_limit != 0.0 {
+    let low_warn = if cv.low_warn_limit != f64::MIN {
         Some((cv.low_warn_limit, to_pct(cv.low_warn_limit)))
     } else {
         None
     };
-    let high_warn = if cv.high_warn_limit != 100.0 {
+    let high_warn = if cv.high_warn_limit != f64::MAX {
         Some((cv.high_warn_limit, to_pct(cv.high_warn_limit)))
     } else {
         None
     };
-    let high_alarm = if cv.high_alarm_limit != 100.0 {
+    let high_alarm = if cv.high_alarm_limit != f64::MAX {
         Some((cv.high_alarm_limit, to_pct(cv.high_alarm_limit)))
     } else {
         None
@@ -137,35 +132,30 @@ pub fn render_inner_disconnected(config: &WidgetConfig) -> Markup {
 pub fn render_inner_disconnected_with_last(config: &WidgetConfig, last_value: Option<&ChannelValue>) -> Markup {
     if let Some(cv) = last_value {
         let display_value = if cv.value_str.is_empty() {
-            format!("{:.prec$}", cv.raw_value, prec = cv.precision as usize)
+            format_gauge_value(cv.raw_value, cv.precision)
         } else {
             cv.value_str.clone()
         };
-        let min = cv.display_low;
-        let max = if (cv.display_high - cv.display_low).abs() < f64::EPSILON {
-            cv.display_low + 100.0
-        } else {
-            cv.display_high
-        };
+        let (min, max) = gauge_range(cv.display_low, cv.display_high);
         let percentage = ((cv.raw_value - min) / (max - min) * 100.0).clamp(0.0, 100.0);
         let range = max - min;
         let to_pct = |v: f64| ((v - min) / range * 100.0).clamp(0.0, 100.0);
-        let low_alarm = if cv.low_alarm_limit != 0.0 {
+        let low_alarm = if cv.low_alarm_limit != f64::MIN {
             Some((cv.low_alarm_limit, to_pct(cv.low_alarm_limit)))
         } else {
             None
         };
-        let low_warn = if cv.low_warn_limit != 0.0 {
+        let low_warn = if cv.low_warn_limit != f64::MIN {
             Some((cv.low_warn_limit, to_pct(cv.low_warn_limit)))
         } else {
             None
         };
-        let high_warn = if cv.high_warn_limit != 100.0 {
+        let high_warn = if cv.high_warn_limit != f64::MAX {
             Some((cv.high_warn_limit, to_pct(cv.high_warn_limit)))
         } else {
             None
         };
-        let high_alarm = if cv.high_alarm_limit != 100.0 {
+        let high_alarm = if cv.high_alarm_limit != f64::MAX {
             Some((cv.high_alarm_limit, to_pct(cv.high_alarm_limit)))
         } else {
             None
@@ -203,6 +193,26 @@ pub fn render_inner_disconnected_with_last(config: &WidgetConfig, last_value: Op
         None,
         "",
     )
+}
+
+fn format_gauge_value(value: f64, precision: i32) -> String {
+    match usize::try_from(precision) {
+        Ok(precision) => format!("{value:.precision$}"),
+        Err(_) => value.to_string(),
+    }
+}
+
+fn gauge_range(display_low: f64, display_high: f64) -> (f64, f64) {
+    let range = display_high - display_low;
+    if display_low.is_finite()
+        && display_high.is_finite()
+        && range.is_finite()
+        && range > f64::EPSILON
+    {
+        (display_low, display_high)
+    } else {
+        (0.0, 100.0)
+    }
 }
 
 fn render_gauge_html(
