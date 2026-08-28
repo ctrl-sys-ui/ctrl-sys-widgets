@@ -59,15 +59,15 @@ chrono = "0.4.44"
 # Charting (SVG-only backend, minimal deps)
 plotters = { version = "0.3", default-features = false, features = ["svg_backend", "line_series"] }
 
-# EPICS (optional — enable with feature "epics-pvxs")
-pvxs = { path = "../pvxs-rs", optional = true }
+# EPICS (optional — enable with feature "epics-rs")
+pvxs = "0.1.1"
 
 # Modbus (optional — enable with feature "modbus-tcp-client" or "modbus-tcp-server")
 tokio-modbus = { version = "0.17.0", default-features = false, features = ["tcp"], optional = true }
 
 # ASCII protocols (optional)
-ascii-tcp = { path = "../ascii-tcp", optional = true }
-ascii-serial = { path = "../ascii-serial", optional = true }
+ascii-tcp = "0.1.0"
+ascii-serial = "0.1.0"
 
 # Desktop (optional — enable with feature "desktop")
 wry   = { version = "0.55", optional = true }
