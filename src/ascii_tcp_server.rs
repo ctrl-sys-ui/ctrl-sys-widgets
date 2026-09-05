@@ -47,7 +47,6 @@ where
             io_timeout: Duration::from_secs(2),
             line_ending: to_line_ending(line_ending),
             max_line_length: 8 * 1024,
-            metadata: ascii_tcp::server::ServerMetadata::default(),
         };
 
         let server = match ascii_tcp::server::Server::start(config, {
