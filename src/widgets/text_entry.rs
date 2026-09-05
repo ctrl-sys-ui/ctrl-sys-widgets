@@ -175,6 +175,7 @@ fn render_input_html(
                     span class="units-overlay" { (units) }
                 }
             }
+            span class="status" {}
             label class="widget-label" {
                 (config.label)
                 @if let Some(src) = icon {

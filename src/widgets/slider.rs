@@ -253,6 +253,7 @@ fn render_slider_html(
                     span class="slider-units" { (units) }
                 }
             }
+            span class="status" {}
             label class="widget-label" {
                 (config.label)
                 @if let Some(src) = icon {
