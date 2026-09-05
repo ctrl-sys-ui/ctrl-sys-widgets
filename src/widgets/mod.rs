@@ -438,7 +438,7 @@ pub async fn write_channel(
         }
         #[cfg(feature = "ascii-tcp")]
         Some(ProtocolConfig::AsciiTcp(a)) => {
-            write_channel_ascii_tcp(&config.id, a.clone(), value_str).await
+            write_channel_ascii_tcp(&config.id, a.clone(), value_str, channel_ctx).await
         }
         #[cfg(feature = "ascii-serial")]
         Some(ProtocolConfig::AsciiSerial(s)) => {
@@ -529,8 +529,13 @@ async fn write_channel_modbus(
 }
 
 #[cfg(feature = "ascii-tcp")]
-async fn write_channel_ascii_tcp(widget_id: &str, a: AsciiTcpConfig, value_str: String) -> Markup {
-    match crate::ascii_tcp_client::write(&a, &value_str).await {
+async fn write_channel_ascii_tcp(
+    widget_id: &str,
+    a: AsciiTcpConfig,
+    value_str: String,
+    channel_ctx: Arc<ChannelContext>,
+) -> Markup {
+    match crate::ascii_tcp_client::write(&a, &value_str, &channel_ctx.ascii_tcp_pool).await {
         Ok(()) => {
             tracing::info!("[{}] write_channel ASCII TCP OK", widget_id);
             html! { span class="write-ok" { "OK" } }

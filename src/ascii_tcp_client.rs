@@ -107,8 +107,23 @@ fn parse_response(cfg: &AsciiTcpConfig, response: &str) -> Result<f64, String> {
     }
 }
 
+/// Narrows a response line to the field selected by `read_response`, if configured.
+fn extract_field(
+    template: Option<&ascii_tcp::ResponseTemplate>,
+    response: String,
+) -> Result<String, String> {
+    match template {
+        Some(template) => template
+            .capture_first(&response)
+            .map(|capture| capture.text)
+            .map_err(|e| e.to_string()),
+        None => Ok(response),
+    }
+}
+
 pub fn stream(
     config: Arc<WidgetConfig>,
+    pool: Arc<ascii_tcp::ConnectionPool>,
 ) -> impl tokio_stream::Stream<Item = ChannelEvent> + Send + 'static {
     let (tx, rx) = tokio::sync::mpsc::unbounded_channel::<ChannelEvent>();
 
@@ -122,19 +137,40 @@ pub fn stream(
         }
     };
 
-    tokio::spawn(run_poll(a, config, tx));
+    let Some(read_command) = a.read_command.clone() else {
+        // Write-only endpoint: report it live once so the widget renders enabled, then idle.
+        let _ = tx.send(ChannelEvent::Connected);
+        let _ = tx.send(ChannelEvent::Value(build_channel_value(0.0, "", &config)));
+        tokio::spawn(async move { tx.closed().await });
+        return tokio_stream::wrappers::UnboundedReceiverStream::new(rx);
+    };
+
+    tokio::spawn(run_poll(a, read_command, config, tx, pool));
 
     tokio_stream::wrappers::UnboundedReceiverStream::new(rx)
 }
 
 async fn run_poll(
     a: AsciiTcpConfig,
+    read_command: String,
     config: Arc<WidgetConfig>,
     tx: tokio::sync::mpsc::UnboundedSender<ChannelEvent>,
+    pool: Arc<ascii_tcp::ConnectionPool>,
 ) {
     let mut interval = tokio::time::interval(Duration::from_millis(a.min_poll_interval_ms.max(50)));
     let mut was_connected = false;
     let mut last_value_str: Option<String> = None;
+
+    let response_template = match a.read_response.as_deref() {
+        Some(source) => match ascii_tcp::ResponseTemplate::compile(source) {
+            Ok(template) => Some(template),
+            Err(e) => {
+                let _ = tx.send(ChannelEvent::Error(e.to_string()));
+                return;
+            }
+        },
+        None => None,
+    };
 
     loop {
         interval.tick().await;
@@ -147,16 +183,26 @@ async fn run_poll(
             line_ending: to_line_ending(a.line_ending),
         };
 
-        match ascii_tcp::exchange_line(&request_cfg, &a.read_command).await {
+        match pool.exchange_line(&request_cfg, &read_command).await {
             Ok(response) => {
                 if !was_connected {
                     was_connected = true;
                     let _ = tx.send(ChannelEvent::Connected);
                 }
 
+                let field = match extract_field(response_template.as_ref(), response) {
+                    Ok(field) => field,
+                    Err(e) => {
+                        if tx.send(ChannelEvent::Error(e)).is_err() {
+                            break;
+                        }
+                        continue;
+                    }
+                };
+
                 let physical = match a.response_mode {
                     AsciiResponseMode::Text => 0.0,
-                    _ => match parse_response(&a, &response) {
+                    _ => match parse_response(&a, &field) {
                         Ok(raw) => raw * a.scale + a.offset,
                         Err(e) => {
                             if tx.send(ChannelEvent::Error(e)).is_err() {
@@ -168,11 +214,11 @@ async fn run_poll(
                 };
 
                 let cv = if matches!(a.response_mode, AsciiResponseMode::Text) {
-                    let mut cv = build_channel_value(0.0, &response, &config);
-                    cv.value_str = response;
+                    let mut cv = build_channel_value(0.0, &field, &config);
+                    cv.value_str = field;
                     cv
                 } else {
-                    build_channel_value(physical, &response, &config)
+                    build_channel_value(physical, &field, &config)
                 };
 
                 if last_value_str.as_deref() != Some(&cv.value_str) {
@@ -195,7 +241,11 @@ async fn run_poll(
     }
 }
 
-pub async fn write(a: &AsciiTcpConfig, value_str: &str) -> Result<(), String> {
+pub async fn write(
+    a: &AsciiTcpConfig,
+    value_str: &str,
+    pool: &ascii_tcp::ConnectionPool,
+) -> Result<(), String> {
     let outbound_value = if matches!(a.response_mode, AsciiResponseMode::Number) {
         let physical: f64 = value_str
             .trim()
@@ -220,8 +270,14 @@ pub async fn write(a: &AsciiTcpConfig, value_str: &str) -> Result<(), String> {
         line_ending: to_line_ending(a.line_ending),
     };
 
-    ascii_tcp::exchange_line(&request_cfg, &command)
-        .await
-        .map(|_| ())
-        .map_err(|e| e.to_string())
+    if a.write_expects_response {
+        pool.exchange_line(&request_cfg, &command)
+            .await
+            .map(|_| ())
+            .map_err(|e| e.to_string())
+    } else {
+        pool.send_line(&request_cfg, &command)
+            .await
+            .map_err(|e| e.to_string())
+    }
 }

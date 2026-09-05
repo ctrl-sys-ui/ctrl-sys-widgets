@@ -61,7 +61,10 @@ pub fn channel_stream(
 
     #[cfg(feature = "ascii-tcp")]
     if let Some(ProtocolConfig::AsciiTcp(_)) = config.protocol.as_ref() {
-        return Box::pin(crate::ascii_tcp_client::stream(config));
+        return Box::pin(crate::ascii_tcp_client::stream(
+            config,
+            ctx.ascii_tcp_pool.clone(),
+        ));
     }
 
     #[cfg(feature = "ascii-serial")]

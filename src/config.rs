@@ -572,13 +572,30 @@ pub struct AsciiTcpConfig {
     /// TCP port for ASCII line protocol endpoint.
     pub port: u16,
     /// Poll request line sent on each read cycle.
-    pub read_command: String,
+    ///
+    /// Omit for write-only endpoints: no polling happens and the widget is
+    /// reported as connected so it renders enabled.
+    #[serde(default)]
+    pub read_command: Option<String>,
+    /// Optional printf-style template describing the read response layout.
+    ///
+    /// The first conversion specifier (`%d`, `%f`, `%x`, `%s`) supplies the
+    /// widget value, e.g. `"ARM=%d"` extracts `1` from `ARM=1`.
+    /// When absent, the whole response line is parsed per `response_mode`.
+    #[serde(default)]
+    pub read_response: Option<String>,
     /// Optional command template used for writes.
     ///
     /// When present, `{value}` is replaced with the requested value.
     /// When absent, the raw value is sent as-is.
     #[serde(default)]
     pub write_command: Option<String>,
+    /// Whether the endpoint acknowledges writes with a response line.
+    ///
+    /// Set to `false` for fire-and-forget commands, otherwise the write waits
+    /// for a reply that never arrives and fails with an I/O timeout.
+    #[serde(default = "default_write_expects_response")]
+    pub write_expects_response: bool,
     /// Line terminator appended to outbound requests.
     #[serde(default)]
     pub line_ending: AsciiLineEnding,
@@ -708,6 +725,10 @@ fn default_scale() -> f64 {
 #[cfg(any(feature = "modbus", feature = "ascii-tcp", feature = "ascii-serial"))]
 fn default_offset() -> f64 {
     0.0
+}
+#[cfg(feature = "ascii-tcp")]
+fn default_write_expects_response() -> bool {
+    true
 }
 #[cfg(feature = "modbus")]
 fn default_word_count() -> u8 {
