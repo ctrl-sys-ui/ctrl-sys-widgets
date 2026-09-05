@@ -183,7 +183,16 @@ async fn run_poll(
             line_ending: to_line_ending(a.line_ending),
         };
 
-        match pool.exchange_line(&request_cfg, &read_command).await {
+        // Without a template every line looks like a valid reply, so unsolicited frames cannot be told apart.
+        let accepts_response = |line: &str| match response_template.as_ref() {
+            Some(template) => template.captures(line).is_ok(),
+            None => true,
+        };
+
+        match pool
+            .exchange_line_matching(&request_cfg, &read_command, accepts_response)
+            .await
+        {
             Ok(response) => {
                 if !was_connected {
                     was_connected = true;

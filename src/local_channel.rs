@@ -71,7 +71,8 @@ pub fn local_stream(
         }
 
         let first = watch_rx.borrow().clone();
-        let mut last_value = first.value_str.clone();
+        // Severity is part of the identity so an alarm transition at an unchanged value still propagates.
+        let mut last_update = (first.value_str.clone(), first.alarm_severity);
         if tx.send(ChannelEvent::Value(first)).is_err() {
             return;
         }
@@ -81,10 +82,11 @@ pub fn local_stream(
                 break;
             }
             let cv = watch_rx.borrow().clone();
-            if cv.value_str == last_value {
+            let update = (cv.value_str.clone(), cv.alarm_severity);
+            if update == last_update {
                 continue;
             }
-            last_value = cv.value_str.clone();
+            last_update = update;
             if tx.send(ChannelEvent::Value(cv)).is_err() {
                 break;
             }
